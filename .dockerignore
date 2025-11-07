@@ -85,8 +85,8 @@ temp
 *.gz
 
 # ============ Prisma ============
-# 保留 schema，排除其他
-prisma/migrations
+# 保留 schema 和 migrations
+# prisma/migrations  # 注释掉，保留 migrations
 prisma/*.db
 prisma/*.db-journal
 

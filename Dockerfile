@@ -34,6 +34,8 @@ ENV PORT=3001
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
+# 复制 Prisma schema 和生成的客户端
+COPY --from=builder /app/prisma ./prisma
 
 # 创建必要的目录
 RUN mkdir -p /app/updates /app/logs

@@ -40,3 +40,18 @@ debug.log
 temp/
 tmp/
 .temp/
+
+# 临时文件
+*.tmp
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试
+coverage/
+

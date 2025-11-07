@@ -631,6 +631,243 @@ sudo docker inspect sora-ui-backend | grep -A 5 Health
 
 
 
+Backend 运行正常！✅ 问题在于 **Cloudflare 无法连接到源服务器**。
+
+## 🔍 问题分析
+
+**Cloudflare Error 521** 的原因：
+- Cloudflare 正在工作 ✅
+- 但是无法连接到你的服务器 ❌
+
+**原因：** Cloudflare 默认尝试连接 **80/443 端口**，但你的服务运行在 **3000 端口**！
+
+---
+
+## ✅ 解决方案
+
+### 方式 A: 直接访问 IP（快速验证）
+
+**打开浏览器访问：**
+```
+http://175.27.250.155:3000
+```
+
+这应该能直接看到登录页面！
+
+---
+
+### 方式 B: 配置 Nginx 反向代理（推荐）
+
+**让域名可以访问，在服务器上执行：**
+
+```bash
+# 1. 安装 Nginx
+apt update
+apt install nginx -y
+
+# 2. 配置反向代理
+cat > /etc/nginx/sites-available/sora << 'EOF'
+# Backend API
+server {
+    listen 80;
+    server_name api.zuozuoliang999.xyz;
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Admin 前端
+server {
+    listen 80;
+    server_name admin.zuozuoliang999.xyz;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# 3. 启用配置
+ln -s /etc/nginx/sites-available/sora /etc/nginx/sites-enabled/
+rm /etc/nginx/sites-enabled/default 2>/dev/null || true
+
+# 4. 测试配置
+nginx -t
+
+# 5. 重启 Nginx
+systemctl restart nginx
+systemctl enable nginx
+
+# 6. 查看状态
+systemctl status nginx
+```
+
+---
+
+## 🎯 快速验证
+
+### 现在立即测试
+
+**1. 先访问 IP（不需要配置）：**
+```
+http://175.27.250.155:3000
+```
+
+**应该能看到登录页面！**
+
+**2. 如果能访问，说明服务正常，只是需要 Nginx**
+
+**3. 配置 Nginx 后，域名就能访问了：**
+```
+https://admin.zuozuoliang999.xyz
+https://api.zuozuoliang999.xyz
+```
+
+---
+
+## 📝 Cloudflare 配置提示
+
+**在 Cloudflare SSL/TLS 设置中：**
+- 设置为 **"Flexible"** 或 **"Full"**
+- 不要用 "Full (strict)"（因为服务器还没配置 SSL 证书）
+
+---
+
+**🚀 先试试直接访问 http://175.27.250.155:3000 看看能否登录！**
+
+Backend 运行正常！✅ 问题在于 **Cloudflare 无法连接到源服务器**。
+
+## 🔍 问题分析
+
+**Cloudflare Error 521** 的原因：
+- Cloudflare 正在工作 ✅
+- 但是无法连接到你的服务器 ❌
+
+**原因：** Cloudflare 默认尝试连接 **80/443 端口**，但你的服务运行在 **3000 端口**！
+
+---
+
+## ✅ 解决方案
+
+### 方式 A: 直接访问 IP（快速验证）
+
+**打开浏览器访问：**
+```
+http://175.27.250.155:3000
+```
+
+这应该能直接看到登录页面！
+
+---
+
+### 方式 B: 配置 Nginx 反向代理（推荐）
+
+**让域名可以访问，在服务器上执行：**
+
+```bash
+# 1. 安装 Nginx
+apt update
+apt install nginx -y
+
+# 2. 配置反向代理
+cat > /etc/nginx/sites-available/sora << 'EOF'
+# Backend API
+server {
+    listen 80;
+    server_name api.zuozuoliang999.xyz;
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Admin 前端
+server {
+    listen 80;
+    server_name admin.zuozuoliang999.xyz;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# 3. 启用配置
+ln -s /etc/nginx/sites-available/sora /etc/nginx/sites-enabled/
+rm /etc/nginx/sites-enabled/default 2>/dev/null || true
+
+# 4. 测试配置
+nginx -t
+
+# 5. 重启 Nginx
+systemctl restart nginx
+systemctl enable nginx
+
+# 6. 查看状态
+systemctl status nginx
+```
+
+---
+
+## 🎯 快速验证
+
+### 现在立即测试
+
+**1. 先访问 IP（不需要配置）：**
+```
+http://175.27.250.155:3000
+```
+
+**应该能看到登录页面！**
+
+**2. 如果能访问，说明服务正常，只是需要 Nginx**
+
+**3. 配置 Nginx 后，域名就能访问了：**
+```
+https://admin.zuozuoliang999.xyz
+https://api.zuozuoliang999.xyz
+```
+
+---
+
+## 📝 Cloudflare 配置提示
+
+**在 Cloudflare SSL/TLS 设置中：**
+- 设置为 **"Flexible"** 或 **"Full"**
+- 不要用 "Full (strict)"（因为服务器还没配置 SSL 证书）
+
+---
+
+**🚀 先试试直接访问 http://175.27.250.155:3000 看看能否登录！**
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
