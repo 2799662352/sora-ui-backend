@@ -1,0 +1,204 @@
+version: '3.8'
+
+# 完整版 Docker Compose 配置
+# 包含 MySQL + Redis + Backend + Nginx
+# 适用于腾讯云快速部署
+
+services:
+  # ============ MySQL 数据库 ============
+  mysql:
+    image: mysql:8.0
+    container_name: sora-ui-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-changeme123}
+      - MYSQL_DATABASE=sora_ui
+      - MYSQL_USER=${MYSQL_USER:-sorauser}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-sorapass123}
+      - TZ=Asia/Shanghai
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+      - ./mysql/conf:/etc/mysql/conf.d:ro
+    networks:
+      - sora-network
+    command: 
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$MYSQL_ROOT_PASSWORD"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============ Redis 缓存 ============
+  redis:
+    image: redis:7-alpine
+    container_name: sora-ui-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - sora-network
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============ Sora UI Backend API ============
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sora-ui-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      # Node 环境
+      - NODE_ENV=production
+      - PORT=3001
+      - TZ=Asia/Shanghai
+      
+      # 数据库配置
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=${MYSQL_USER:-sorauser}
+      - DB_PASSWORD=${MYSQL_PASSWORD:-sorapass123}
+      - DB_NAME=sora_ui
+      
+      # Redis 配置
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      
+      # JWT 配置
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production-please}
+      - LICENSE_SECRET=${LICENSE_SECRET:-change-me-in-production-please}
+      - JWT_EXPIRES_IN=7d
+      
+      # CORS 配置
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      
+      # 日志级别
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./updates:/app/updates:ro  # 更新文件只读
+      - ./logs:/app/logs           # 日志持久化
+    networks:
+      - sora-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============ Nginx 反向代理 ============
+  nginx:
+    image: nginx:alpine
+    container_name: sora-ui-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./updates:/var/www/updates:ro  # 更新文件服务
+      - ./nginx/logs:/var/log/nginx    # Nginx 日志
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sora-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============ 数据库管理工具 Adminer（可选）============
+  adminer:
+    image: adminer:latest
+    container_name: sora-ui-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=mysql
+      - TZ=Asia/Shanghai
+    networks:
+      - sora-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles:
+      - tools  # 使用 profile，默认不启动
+
+# ============ 数据卷 ============
+volumes:
+  mysql_data:
+    name: sora-mysql-data
+  redis_data:
+    name: sora-redis-data
+
+# ============ 网络 ============
+networks:
+  sora-network:
+    name: sora-network
+    driver: bridge
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

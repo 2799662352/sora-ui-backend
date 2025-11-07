@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # ============ Sora UI Backend API ============
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sora-ui-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - LICENSE_SECRET=${LICENSE_SECRET:-change-me-in-production}
+      - JWT_EXPIRES_IN=7d
+      - CORS_ORIGIN=*
+    volumes:
+      - ./updates:/app/updates:ro  # 更新文件只读
+      - ./logs:/app/logs           # 日志持久化
+    networks:
+      - sora-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # ============ Nginx 反向代理 ============
+  nginx:
+    image: nginx:alpine
+    container_name: sora-ui-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./updates:/var/www/updates:ro  # 更新文件服务
+    depends_on:
+      - backend
+    networks:
+      - sora-network
+
+networks:
+  sora-network:
+    driver: bridge
+

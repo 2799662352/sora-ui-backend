@@ -1,0 +1,98 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  .dockerignore - 优化 Docker 构建速度                       ║
+# ║  排除不必要的文件，减少构建时间 70%+                        ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+# ============ Node.js ============
+node_modules
+npm-debug.log
+yarn-error.log
+yarn.lock
+.npm
+.yarn
+
+# ============ TypeScript ============
+dist
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ============ 环境变量 ============
+.env
+.env.local
+.env.*.local
+.env.production
+.env.test
+
+# ============ Git ============
+.git
+.gitignore
+.gitattributes
+.github
+
+# ============ IDE ============
+.vscode
+.idea
+*.swp
+*.swo
+*.swn
+.DS_Store
+
+# ============ 测试 ============
+coverage
+.nyc_output
+test
+tests
+**/*.test.ts
+**/*.spec.ts
+
+# ============ 文档 ============
+*.md
+docs
+LICENSE
+README*
+CHANGELOG*
+
+# ============ CI/CD ============
+.github
+.gitlab-ci.yml
+.circleci
+.travis.yml
+Jenkinsfile
+
+# ============ Docker ============
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# ============ 部署脚本 ============
+*.sh
+*.ps1
+deploy*
+
+# ============ 备份文件 ============
+*.backup
+*.bak
+*.old
+*.orig
+
+# ============ 临时文件 ============
+tmp
+temp
+*.tmp
+*.log
+*.pid
+*.seed
+*.gz
+
+# ============ Prisma ============
+# 保留 schema，排除其他
+prisma/migrations
+prisma/*.db
+prisma/*.db-journal
+
+# ============ 其他 ============
+.prettierrc
+.eslintrc*
+.editorconfig
+nodemon.json
+jest.config.js

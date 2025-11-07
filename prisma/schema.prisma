@@ -1,0 +1,114 @@
+// Sora UI Backend - Prisma Schema
+// 学习自: express-boilerplate (Prisma最佳实践)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ 用户表 ============
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String?  @unique
+  password  String
+  
+  // 用户信息
+  role      UserRole @default(USER)
+  isActive  Boolean  @default(true)
+  
+  // 时间戳
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLogin DateTime?
+  
+  // 关系
+  license   License?
+  logs      ActivityLog[]
+  
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+// ============ 许可证表 ============
+model License {
+  id          String       @id @default(uuid())
+  licenseKey  String       @unique
+  type        LicenseType
+  
+  // 关联用户
+  userId      String?      @unique
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  // 许可证状态
+  isActive    Boolean      @default(true)
+  deviceId    String?
+  
+  // 功能权限
+  features    Json         @default("{}")
+  
+  // 时间
+  activatedAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([licenseKey])
+  @@index([userId])
+  @@map("licenses")
+}
+
+enum LicenseType {
+  TRIAL
+  PRO
+  ENTERPRISE
+}
+
+// ============ 活动日志表 ============
+model ActivityLog {
+  id        String   @id @default(uuid())
+  
+  // 用户信息
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  // 操作信息
+  action    String   // 'login', 'activate', 'generate', etc.
+  details   Json     @default("{}")
+  
+  // 请求信息
+  ip        String?
+  userAgent String?
+  
+  // 时间
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+// ============ 系统配置表 ============
+model SystemConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("system_configs")
+}
+
