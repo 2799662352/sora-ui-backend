@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String        @id @default(uuid())
+  username   String        @unique
+  email      String?       @unique
+  password   String
+  role       UserRole      @default(USER)
+  isActive   Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  lastLogin  DateTime?
+  logs       ActivityLog[]
+  license    License?
+  videoTasks VideoTask[]
+
+  @@index([email])
+  @@index([username])
+}
+
+model License {
+  id          String      @id @default(uuid())
+  licenseKey  String      @unique
+  type        LicenseType
+  userId      String?     @unique
+  isActive    Boolean     @default(true)
+  deviceId    String?
+  features    Json        @default("{}")
+  activatedAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        User?       @relation(fields: [userId], references: [id])
+
+  @@index([licenseKey])
+  @@index([userId])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  details   Json     @default("{}")
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model SystemConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VideoTask {
+  id             String     @id @default(uuid())
+  videoId        String     @unique
+  userId         String
+  status         TaskStatus @default(QUEUED)
+  progress       Int        @default(0)
+  prompt         String
+  model          String
+  size           String?
+  duration       Int?
+  watermark      Boolean    @default(false)
+  aspectRatio    String?
+  referenceImage String?
+  apiConfigId    String?
+  apiEndpoint    String?
+  videoUrl       String?
+  imageUrl       String?
+  mediaType      MediaType  @default(VIDEO)
+  taskId         String?
+  isAsync        Boolean    @default(false)
+  pollCount      Int        @default(0)
+  lastPollTime   DateTime?
+  errorCode      String?
+  errorMessage   String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
+  metadata       Json       @default("{}")
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([videoId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum LicenseType {
+  TRIAL
+  PRO
+  ENTERPRISE
+}
+
+enum TaskStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum MediaType {
+  VIDEO
+  IMAGE
+}

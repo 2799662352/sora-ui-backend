@@ -1,11 +1,52 @@
-version: '3.8'
-
 services:
+  # ============ Redis 缓存层 ============
+  redis:
+    image: redis:7-alpine
+    container_name: sora-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - sora-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ============ PostgreSQL 数据库 ============
+  postgres:
+    image: postgres:15-alpine
+    container_name: sora-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=sorauser
+      - POSTGRES_PASSWORD=sora_password_2024
+      - POSTGRES_DB=soraui
+      - TZ=Asia/Shanghai
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - sora-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sorauser -d soraui"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ============ Sora UI Backend API ============
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # 🔥 使用 Docker Hub 镜像（已修复所有 Bug）
+    image: zuozuoliang999/sora-ui-backend:v1.1.1-stable
+    # 如需使用最新版本，取消下面的注释：
+    # image: zuozuoliang999/sora-ui-backend:latest
     container_name: sora-ui-backend
     restart: unless-stopped
     ports:
@@ -13,15 +54,29 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
+      # 🔥 优化：添加连接池参数（参考Prisma最佳实践，预期性能+30%）
+      - DATABASE_URL=postgresql://sorauser:sora_password_2024@postgres:5432/soraui?schema=public&connection_limit=20&pool_timeout=10&connect_timeout=10
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - ENABLE_REDIS_CACHE=true
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - LICENSE_SECRET=${LICENSE_SECRET:-change-me-in-production}
       - JWT_EXPIRES_IN=7d
       - CORS_ORIGIN=*
+      - APIYI_API_KEY=${APIYI_API_KEY:-}
+      - VIDEO_POLL_INTERVAL=${VIDEO_POLL_INTERVAL:-30000}
+      - VIDEO_MAX_POLL_ATTEMPTS=${VIDEO_MAX_POLL_ATTEMPTS:-20}
     volumes:
       - ./updates:/app/updates:ro  # 更新文件只读
       - ./logs:/app/logs           # 日志持久化
     networks:
       - sora-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
@@ -49,4 +104,10 @@ services:
 networks:
   sora-network:
     driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
 

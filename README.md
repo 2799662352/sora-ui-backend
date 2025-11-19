@@ -18,15 +18,25 @@ Sora UI 视频生成应用的后端服务，提供用户认证、许可证管理
   - 版本检查
   - 更新文件下载
 
+- ✅ **视频任务管理** 🆕
+  - 视频/图片生成任务创建
+  - 任务状态实时追踪
+  - 历史记录持久化存储
+  - 异步任务自动轮询
+  - 任务统计和分析
+  - 批量任务管理
+
 ## 🛠️ 技术栈
 
 - **Runtime**: Node.js (v16+)
 - **Framework**: Express.js
 - **Language**: TypeScript
-- **Database**: 内存数据库（演示）→ PostgreSQL（生产）
+- **Database**: PostgreSQL (Prisma ORM) 
 - **Authentication**: JWT (jsonwebtoken)
 - **Password**: bcrypt
 - **Dev Tools**: nodemon, ts-node
+- **ORM**: Prisma
+- **Container**: Docker & Docker Compose
 
 ## 📦 项目结构
 
@@ -41,16 +51,28 @@ sora-ui-backend/
 │   ├── services/              # 业务逻辑
 │   │   ├── authService.ts    # 认证服务
 │   │   ├── licenseService.ts # 许可证服务
-│   │   └── updateService.ts  # 更新服务
+│   │   ├── updateService.ts  # 更新服务
+│   │   └── videoTaskService.ts # 视频任务服务 🆕
+│   ├── repositories/          # 数据访问层 🆕
+│   │   └── videoTaskRepository.ts # 视频任务数据访问
 │   ├── routes/                # API 路由
 │   │   ├── auth.ts           # 认证路由
 │   │   ├── license.ts        # 许可证路由
-│   │   └── update.ts         # 更新路由
+│   │   ├── update.ts         # 更新路由
+│   │   └── videoTask.ts      # 视频任务路由 🆕
 │   └── middleware/            # 中间件
 │       └── auth.ts           # JWT 认证中间件
+├── prisma/                    # Prisma 数据库配置
+│   ├── schema.prisma         # 数据库模型定义
+│   └── migrations/           # 数据库迁移文件
+├── docs/                      # 文档 🆕
+│   ├── VIDEO_TASK_API.md     # 视频任务 API 文档
+│   ├── FRONTEND_INTEGRATION.md # 前端集成指南
+│   └── DEPLOYMENT_GUIDE.md   # 部署指南
 ├── Dockerfile                 # Docker 镜像配置
 ├── docker-compose.yml         # Docker Compose 配置
 ├── nginx/                     # Nginx 配置
+├── add-video-tasks-migration.sql # 视频任务表迁移脚本 🆕
 │   └── nginx.conf
 ├── deploy.sh                  # 部署脚本（Linux）
 ├── deploy-docker.sh           # Docker 部署脚本
@@ -109,6 +131,19 @@ GET  /api/update/check           # 检查更新
 GET  /api/update/download/:version  # 下载更新
 ```
 
+### 视频任务 API 🆕
+
+```http
+POST /api/video/tasks             # 创建视频任务
+GET  /api/video/tasks             # 获取任务列表
+GET  /api/video/tasks/:videoId   # 获取任务详情
+GET  /api/video/tasks/:videoId/content # 获取视频内容
+POST /api/video/tasks/:videoId/cancel  # 取消任务
+GET  /api/video/stats             # 获取任务统计
+```
+
+详细文档请查看 [视频任务 API 文档](docs/VIDEO_TASK_API.md)
+
 ## 🧪 测试
 
 ### 使用 PowerShell 测试
@@ -141,6 +176,24 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/license/activate" `
   -Method Post `
   -Headers $headers `
   -Body '{"licenseKey":"SORA-PRO-UNLIMITED-LIFETIME-2024"}'
+
+# 创建视频任务
+$videoTask = Invoke-RestMethod -Uri "http://localhost:3001/api/video/tasks" `
+  -Method Post `
+  -Headers $headers `
+  -Body '{"prompt":"一只可爱的小猫在玩耍","model":"sora_video2","duration":10}'
+
+$videoId = $videoTask.data.videoId
+
+# 查询任务状态
+Invoke-RestMethod -Uri "http://localhost:3001/api/video/tasks/$videoId" `
+  -Method Get `
+  -Headers $headers
+
+# 获取任务列表
+Invoke-RestMethod -Uri "http://localhost:3001/api/video/tasks?page=1&pageSize=10" `
+  -Method Get `
+  -Headers $headers
 ```
 
 ## 🐳 Docker 部署
@@ -186,14 +239,26 @@ DATABASE_URL=postgresql://user:password@localhost:5432/soraui
 
 # Update Server
 UPDATE_BASE_URL=https://your-update-server.com
+
+# 视频任务 API 🆕
+APIYI_API_KEY=sk-fkmcuF2M7pwW1X9oE8E9Ba553e694f5388A85519A4D2Bc67
+VIDEO_POLL_INTERVAL=30000
+VIDEO_MAX_POLL_ATTEMPTS=20
+VIDEO_TASK_RETENTION_DAYS=30
 ```
 
 ## 📚 相关文档
 
+### 原有文档
 - [🧪 测试后端集成指南](../sora-ui/docs/features/🧪测试后端集成指南.md)
 - [📡 后端服务器实现指南](../sora-ui/docs/features/📡后端服务器实现指南.md)
 - [⚡ 热更新部署指南](../sora-ui/docs/features/⚡热更新部署指南.md)
 - [🚀 完整生产部署方案](../sora-ui/docs/features/🚀完整生产部署方案.md)
+
+### 视频任务相关文档 🆕
+- [📹 视频任务 API 文档](docs/VIDEO_TASK_API.md)
+- [🔗 前端集成指南](docs/FRONTEND_INTEGRATION.md)
+- [🚀 部署指南](docs/DEPLOYMENT_GUIDE.md)
 
 ## 🔒 安全注意事项
 
@@ -203,6 +268,9 @@ UPDATE_BASE_URL=https://your-update-server.com
 - ⚠️ 生产环境请更改 `JWT_SECRET`
 - ⚠️ 生产环境请使用 PostgreSQL 替换内存数据库
 - ⚠️ 生产环境请配置 HTTPS
+- ⚠️ API Key 请妥善保管，避免泄露
+- ⚠️ 设置合理的任务配额限制
+- ⚠️ 定期清理过期的视频任务记录
 
 ## 🐛 问题排查
 

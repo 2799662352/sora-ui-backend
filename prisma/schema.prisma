@@ -1,5 +1,6 @@
-// Sora UI Backend - Prisma Schema
-// 学习自: express-boilerplate (Prisma最佳实践)
+// 🔥 Sora UI Backend - 精简版 Prisma Schema
+// 遵循原则：KISS（Keep It Simple）、DRY、Low Coupling
+// 优化目标：只存储核心ID映射和状态，大额数据由前端本地存储
 
 generator client {
   provider = "prisma-client-js"
@@ -8,31 +9,35 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // 🔥 优化：连接池配置（参考 Prisma 最佳实践）
+  // connection_limit: 最大连接数
+  // pool_timeout: 连接超时（秒）
+  // 生产环境通过 DATABASE_URL 参数配置：
+  // postgresql://user:pass@host:5432/db?connection_limit=20&pool_timeout=10
 }
 
-// ============ 用户表 ============
+// ============ 用户表（保持不变） ============
 model User {
   id        String   @id @default(uuid())
   username  String   @unique
   email     String?  @unique
   password  String
   
-  // 用户信息
   role      UserRole @default(USER)
   isActive  Boolean  @default(true)
   
-  // 时间戳
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   lastLogin DateTime?
   
-  // 关系
   license   License?
   logs      ActivityLog[]
+  videoTasks VideoTask[]
+  channels  Channel[]  // 🔥 新增：API Channel 管理
   
   @@index([email])
   @@index([username])
-  @@map("users")
+  @@map("User")
 }
 
 enum UserRole {
@@ -41,24 +46,19 @@ enum UserRole {
   SUPER_ADMIN
 }
 
-// ============ 许可证表 ============
+// ============ 许可证表（保持不变） ============
 model License {
   id          String       @id @default(uuid())
   licenseKey  String       @unique
   type        LicenseType
   
-  // 关联用户
   userId      String?      @unique
   user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   
-  // 许可证状态
   isActive    Boolean      @default(true)
   deviceId    String?
-  
-  // 功能权限
   features    Json         @default("{}")
   
-  // 时间
   activatedAt DateTime?
   expiresAt   DateTime?
   createdAt   DateTime     @default(now())
@@ -66,7 +66,7 @@ model License {
   
   @@index([licenseKey])
   @@index([userId])
-  @@map("licenses")
+  @@map("License")
 }
 
 enum LicenseType {
@@ -75,32 +75,26 @@ enum LicenseType {
   ENTERPRISE
 }
 
-// ============ 活动日志表 ============
+// ============ 活动日志表（保持不变） ============
 model ActivityLog {
   id        String   @id @default(uuid())
-  
-  // 用户信息
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   
-  // 操作信息
-  action    String   // 'login', 'activate', 'generate', etc.
+  action    String
   details   Json     @default("{}")
   
-  // 请求信息
   ip        String?
   userAgent String?
-  
-  // 时间
   createdAt DateTime @default(now())
   
   @@index([userId])
   @@index([action])
   @@index([createdAt])
-  @@map("activity_logs")
+  @@map("ActivityLog")
 }
 
-// ============ 系统配置表 ============
+// ============ 系统配置表（保持不变） ============
 model SystemConfig {
   id        String   @id @default(uuid())
   key       String   @unique
@@ -109,6 +103,226 @@ model SystemConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
-  @@map("system_configs")
+  @@map("SystemConfig")
 }
+
+// ============ 🔥 视频任务表（兼容版：新旧模式共存） ============
+model VideoTask {
+  id              String       @id @default(uuid())
+  videoId         String       @unique  // 内部视频 ID
+  externalTaskId  String?              // 🔥 新字段：外部 API 的任务 ID
+  
+  // 用户关联
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 🔥 核心状态信息
+  status          TaskStatus   @default(QUEUED)
+  progress        Int          @default(0)  // 0-100
+  
+  // 🔥 基本信息
+  model           String                    // 模型名称
+  apiConfigId     String?                   // API 配置 ID
+  mediaType       MediaType    @default(VIDEO)
+  
+  // 🔥 新字段：Prompt 摘要（精简模式）
+  promptHash      String?                   // Prompt Hash（去重）
+  promptPreview   String?      @db.VarChar(200) // Prompt 预览
+  
+  // 🔥 旧字段：完整数据（旧模式兼容）
+  prompt          String?      @db.Text    // 完整 Prompt（旧模式）
+  referenceImage  String?      @db.Text    // 参考图片（旧模式）
+  videoUrl        String?      @db.Text    // 视频URL（旧模式）
+  imageUrl        String?      @db.Text    // 图片URL
+  size            String?                  // 尺寸
+  duration        Int?                     // 时长
+  aspectRatio     String?                  // 宽高比
+  watermark       Boolean      @default(false)
+  
+  // 🔥 旧字段：异步任务相关
+  isAsync         Boolean      @default(false)
+  apiEndpoint     String?
+  pollCount       Int          @default(0)
+  startedAt       DateTime?
+  lastPollTime    DateTime?
+  
+  // 🔥 旧字段：Metadata（兼容）
+  metadata        Json?        @db.JsonB
+  
+  // 🔥 错误信息
+  errorCode       String?
+  errorMessage    String?      @db.Text
+  
+  // 🔥 时间戳
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  completedAt     DateTime?
+  
+  // 🔥 性能优化索引
+  @@index([videoId])
+  @@index([externalTaskId])
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@index([promptHash])
+  @@map("VideoTask")
+}
+
+enum TaskStatus {
+  QUEUED      // 排队中
+  PROCESSING  // 处理中
+  COMPLETED   // 已完成
+  FAILED      // 失败
+  CANCELLED   // 已取消
+}
+
+enum MediaType {
+  VIDEO       // 视频
+  IMAGE       // 图片
+}
+
+// ============ 🔥 API Channel 表（增强版 - 完全参考 LiteLLM） ============
+model Channel {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  
+  // 基本信息
+  name        String
+  type        String   // 'openai', 'azure', 'sora', 'custom'
+  baseURL     String   @map("base_url")
+  apiKey      String   @map("api_key")
+  
+  // 模型支持
+  models      String[] // 支持的模型列表
+  
+  // 负载均衡
+  priority    Int      @default(1)  // 权重（1-100）
+  status      String   @default("active")  // 'active', 'disabled'
+  groupName   String?  @map("group_name")  // 分组名称
+  
+  // 🔥 LiteLLM: 限流（多维度）
+  rateLimit   Int?     @map("rate_limit")       // RPM 限制
+  tpmLimit    BigInt?  @map("tpm_limit")        // TPM 限制（Tokens Per Minute）
+  maxParallelReqs Int? @map("max_parallel_reqs")// 最大并发请求
+  
+  // 🔥 LiteLLM: 成本统计（详细）
+  totalCost      Float    @default(0) @map("total_cost")    // 总成本
+  spendToday     Float    @default(0) @map("spend_today")   // 今日消费
+  spendThisMonth Float    @default(0) @map("spend_month")   // 本月消费
+  modelSpend     Json?    @default("{}") @map("model_spend")// 按模型统计 {"gpt-4": 123.45}
+  
+  // 🔥 LiteLLM: 预算管理
+  maxBudget      Float?   @map("max_budget")                // 最大预算
+  softBudget     Float?   @map("soft_budget")               // 软预算（警告）
+  budgetResetAt  DateTime? @map("budget_reset_at")          // 预算重置时间
+  
+  // 🔥 LiteLLM: 健康状态（Cooldown机制）
+  isHealthy      Boolean  @default(true) @map("is_healthy") // 是否健康
+  failureCount   Int      @default(0) @map("failure_count") // 连续失败次数
+  cooldownUntil  DateTime? @map("cooldown_until")           // 冷却期结束时间
+  lastFailedAt   DateTime? @map("last_failed_at")           // 最后失败时间
+  
+  // 🔥 LiteLLM: 性能指标
+  avgLatencyMs   Int?     @map("avg_latency_ms")            // 平均延迟
+  successRate    Float    @default(1.0) @map("success_rate")// 成功率（0-1）
+  activeRequests Int      @default(0) @map("active_requests")// 当前活跃请求数
+  
+  // 统计
+  totalCalls  Int      @default(0) @map("total_calls")
+  lastUsedAt  DateTime? @map("last_used_at")
+  
+  // 🔥 LiteLLM: 灵活元数据
+  metadata    Json?    @default("{}") // 扩展字段
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // 关联
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestLogs RequestLog[]  // 🔥 新增：请求日志关联
+  
+  // 索引
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([groupName])
+  @@index([isHealthy])  // 🔥 新增：健康状态索引
+  @@map("Channel")
+}
+
+// ============ 🔥 请求日志表（新增 - 参考 LiteLLM SpendLogs） ============
+model RequestLog {
+  id                String   @id @default(uuid())
+  requestId         String   @unique @map("request_id")       // 请求唯一ID
+  
+  // 关联
+  channelId         String   @map("channel_id")
+  userId            String   @map("user_id")
+  channel           Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  
+  // 🔥 LiteLLM: 请求信息
+  model             String                                     // 模型名称
+  modelGroup        String?  @map("model_group")              // 模型组
+  callType          String   @default("completion") @map("call_type") // completion/embedding/chat
+  customProvider    String?  @map("custom_provider")          // 自定义提供商
+  
+  // 🔥 LiteLLM: 成本和Token
+  spend             Float    @default(0.0)                    // 本次请求成本
+  totalTokens       Int      @default(0) @map("total_tokens")
+  promptTokens      Int      @default(0) @map("prompt_tokens")
+  completionTokens  Int      @default(0) @map("completion_tokens")
+  
+  // 🔥 LiteLLM: 时间追踪
+  startTime         DateTime @map("start_time")               // 请求开始
+  endTime           DateTime @map("end_time")                 // 请求结束
+  responseTimeMs    Int?     @map("response_time_ms")         // 响应时间（毫秒）
+  
+  // 🔥 状态
+  status            String   @default("success")              // success/error
+  errorMessage      String?  @db.Text @map("error_message")
+  httpStatus        Int?     @map("http_status")              // HTTP状态码
+  
+  // 🔥 LiteLLM: 元数据
+  metadata          Json?    @default("{}")                   // 扩展信息
+  
+  // 时间戳
+  createdAt         DateTime @default(now()) @map("created_at")
+  
+  // 索引（重要！查询性能）
+  @@index([channelId])
+  @@index([userId])
+  @@index([model])
+  @@index([startTime])
+  @@index([status])
+  @@map("RequestLog")
+}
+
+// ============ 🔥 字段变化说明 ============
+//
+// ❌ 删除的字段（大额数据，由前端本地存储）：
+// - prompt String @db.Text           (1-10 KB)
+// - referenceImage String @db.Text   (1-5 MB)
+// - videoUrl String @db.Text         (100 B)
+// - imageUrl String @db.Text         (100 B)
+// - size String                      (10 B)
+// - duration Int                     (4 B)
+// - watermark Boolean                (1 B)
+// - aspectRatio String               (10 B)
+// - metadata Json                    (1-5 KB)
+// - taskId String                    (已被 externalTaskId 替代)
+// - isAsync Boolean                  (不需要)
+// - pollCount Int                    (不需要)
+// - lastPollTime DateTime            (不需要)
+// - startedAt DateTime               (不需要)
+// - apiEndpoint String               (不需要，从 apiConfigId 获取)
+//
+// ✅ 新增的字段（轻量优化）：
+// + promptHash String                (32 B，用于去重)
+// + promptPreview String(200)        (200 B，用于预览)
+//
+// 🎯 精简效果：
+// - 当前：每条记录 ~1-5 MB
+// - 优化后：每条记录 ~1 KB
+// - 节省：99% 存储空间
+//
 

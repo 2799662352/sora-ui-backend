@@ -70,3 +70,75 @@ export interface APIResponse<T = any> {
   data?: T;
   error?: string | APIError; // 支持字符串或结构化错误
 }
+
+// ============ 视频任务相关类型 ============
+
+export enum TaskStatus {
+  QUEUED = 'QUEUED',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum MediaType {
+  VIDEO = 'VIDEO',
+  IMAGE = 'IMAGE',
+}
+
+export interface VideoTask {
+  id: string;
+  videoId: string;
+  userId: string;
+  status: TaskStatus;
+  progress: number;
+  prompt: string;
+  model: string;
+  size?: string;
+  duration?: number;
+  watermark: boolean;
+  aspectRatio?: string;
+  referenceImage?: string;
+  apiConfigId?: string;
+  apiEndpoint?: string;
+  videoUrl?: string;
+  imageUrl?: string;
+  mediaType: MediaType;
+  taskId?: string;
+  isAsync: boolean;
+  pollCount: number;
+  lastPollTime?: Date;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  startedAt?: Date;
+  completedAt?: Date;
+  metadata: any;
+}
+
+export interface CreateVideoTaskRequest {
+  prompt: string;
+  model: string;
+  size?: string;
+  duration?: number;
+  watermark?: boolean;
+  aspectRatio?: string;
+  referenceImage?: string;
+  apiConfigId?: string;
+}
+
+export interface VideoTaskListResponse {
+  tasks: VideoTask[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface VideoTaskStats {
+  total: number;
+  completed: number;
+  failed: number;
+  processing: number;
+  queued: number;
+}

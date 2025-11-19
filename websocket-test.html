@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket 实时进度测试</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        .content {
+            padding: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+        }
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: transform 0.2s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 500;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        .status.connected { background: #d4edda; color: #155724; }
+        .status.disconnected { background: #f8d7da; color: #721c24; }
+        .status.authenticated { background: #d1ecf1; color: #0c5460; }
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .log-entry {
+            margin: 4px 0;
+        }
+        .log-time {
+            color: #858585;
+        }
+        .log-type {
+            font-weight: bold;
+            margin: 0 8px;
+        }
+        .log-type.info { color: #4CAF50; }
+        .log-type.success { color: #2196F3; }
+        .log-type.warning { color: #FF9800; }
+        .log-type.error { color: #f44336; }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            width: 100%;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔌 WebSocket 实时进度测试</h1>
+            <p>测试实时任务进度推送（camelCase 驼峰命名）</p>
+        </div>
+
+        <div class="content">
+            <!-- 连接状态 -->
+            <div class="section">
+                <h2>📡 连接状态</h2>
+                <span id="connStatus" class="status disconnected">未连接</span>
+                <span id="authStatus" class="status" style="display:none;">未认证</span>
+                <div style="margin-top: 15px;">
+                    <button onclick="connect()">连接 WebSocket</button>
+                    <button onclick="disconnect()">断开连接</button>
+                </div>
+            </div>
+
+            <!-- 认证 -->
+            <div class="section">
+                <h2>🔐 认证</h2>
+                <input type="text" id="tokenInput" placeholder="输入 JWT Token（从登录获取）" />
+                <div style="margin-top: 10px;">
+                    <button onclick="authenticate()">认证</button>
+                    <button onclick="quickLogin()">快速登录获取Token</button>
+                </div>
+            </div>
+
+            <!-- 任务订阅 -->
+            <div class="section">
+                <h2>📺 任务订阅</h2>
+                <input type="text" id="videoIdInput" placeholder="输入 videoId" />
+                <div style="margin-top: 10px;">
+                    <button onclick="subscribeTask()">订阅任务</button>
+                    <button onclick="unsubscribeTask()">取消订阅</button>
+                    <button onclick="createAndSubscribe()">创建任务并订阅</button>
+                    <button onclick="refreshVideoUrl()">🔄 刷新视频URL</button>
+                </div>
+            </div>
+
+            <!-- 实时进度 -->
+            <div class="section">
+                <h2>📊 实时进度</h2>
+                <div id="progressInfo" style="margin-bottom: 10px;">等待任务数据...</div>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill" style="width: 0%;">0%</div>
+                </div>
+                <div id="taskDetails" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
+            </div>
+
+            <!-- 消息日志 -->
+            <div class="section">
+                <h2>📋 消息日志（camelCase格式）</h2>
+                <button onclick="clearLog()">清空日志</button>
+                <div id="log" class="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentToken = '';
+        let currentVideoId = '';
+
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const colors = {
+                info: 'info',
+                success: 'success',
+                warning: 'warning',
+                error: 'error'
+            };
+            logEl.innerHTML = `<div class="log-entry"><span class="log-time">[${time}]</span><span class="log-type ${colors[type]}">${type.toUpperCase()}</span>${message}</div>` + logEl.innerHTML;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function connect() {
+            if (ws) {
+                log('WebSocket 已连接', 'warning');
+                return;
+            }
+
+            ws = new WebSocket('ws://localhost:3001/ws');
+
+            ws.onopen = () => {
+                log('✅ WebSocket 连接成功', 'success');
+                document.getElementById('connStatus').textContent = '已连接';
+                document.getElementById('connStatus').className = 'status connected';
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                handleMessage(msg);
+            };
+
+            ws.onclose = () => {
+                log('❌ WebSocket 连接关闭', 'warning');
+                document.getElementById('connStatus').textContent = '未连接';
+                document.getElementById('connStatus').className = 'status disconnected';
+                document.getElementById('authStatus').style.display = 'none';
+                ws = null;
+            };
+
+            ws.onerror = (error) => {
+                log('❌ WebSocket 错误: ' + error, 'error');
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        function handleMessage(msg) {
+            log(`📨 ${msg.type}: ${JSON.stringify(msg.payload, null, 2)}`, 'info');
+
+            switch (msg.type) {
+                case 'connected':
+                    log('🎉 服务器响应: ' + msg.payload.serverVersion, 'success');
+                    break;
+
+                case 'authSuccess':
+                    log('🔓 认证成功: ' + msg.payload.username, 'success');
+                    document.getElementById('authStatus').textContent = '已认证 - ' + msg.payload.username;
+                    document.getElementById('authStatus').className = 'status authenticated';
+                    document.getElementById('authStatus').style.display = 'inline-block';
+                    break;
+
+                case 'authFailed':
+                    log('🔒 认证失败: ' + msg.payload.error, 'error');
+                    break;
+
+                case 'subscribeSuccess':
+                    log('📺 订阅成功: ' + msg.payload.videoId, 'success');
+                    currentVideoId = msg.payload.videoId;
+                    break;
+
+                case 'taskProgress':
+                    updateProgress(msg.payload);
+                    log(`📊 进度更新: ${msg.payload.progress}% - ${msg.payload.message}`, 'info');
+                    break;
+
+                case 'taskCompleted':
+                    updateProgress(msg.payload);
+                    log('🎉 任务完成！视频URL: ' + msg.payload.result.videoUrl, 'success');
+                    break;
+
+                case 'taskFailed':
+                    log('❌ 任务失败: ' + msg.payload.error.message, 'error');
+                    break;
+
+                case 'taskStatus':
+                    updateProgress(msg.payload);
+                    log(`📋 任务状态: ${msg.payload.status} - ${msg.payload.progress}%`, 'info');
+                    break;
+
+                case 'heartbeat':
+                    // log('💓 心跳', 'info');
+                    break;
+            }
+        }
+
+        function updateProgress(payload) {
+            const progress = payload.progress || 0;
+            const status = payload.status || '';
+            const message = payload.message || '';
+            const backendId = payload.videoId || '';
+            const externalId = payload.externalVideoId || '';
+
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('progressFill').textContent = progress + '%';
+            document.getElementById('progressInfo').innerHTML = `
+                <strong>状态:</strong> ${status} | 
+                <strong>进度:</strong> ${progress}% | 
+                <strong>消息:</strong> ${message}
+            `;
+
+            // 显示双ID
+            const idInfo = `
+                <div style="background: #f0f0f0; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 12px;">
+                    <strong>📋 后端ID:</strong> <code>${backendId}</code><br>
+                    <strong>🌐 外部API ID:</strong> <code>${externalId || '未提交'}</code>
+                </div>
+            `;
+
+            if (payload.result && payload.result.videoUrl) {
+                document.getElementById('taskDetails').innerHTML = idInfo + `
+                    <div style="margin-top: 10px;">
+                        <strong>✅ 视频URL:</strong> <a href="${payload.result.videoUrl}" target="_blank" style="color: #667eea;">${payload.result.videoUrl}</a><br>
+                        <strong>时长:</strong> ${payload.result.duration || 'N/A'}s | 
+                        <strong>分辨率:</strong> ${payload.result.resolution || 'N/A'}
+                    </div>
+                `;
+            } else {
+                document.getElementById('taskDetails').innerHTML = idInfo;
+            }
+        }
+
+        function authenticate() {
+            if (!ws) {
+                log('请先连接 WebSocket', 'error');
+                return;
+            }
+
+            const token = document.getElementById('tokenInput').value.trim();
+            if (!token) {
+                log('请输入 Token', 'error');
+                return;
+            }
+
+            currentToken = token;
+
+            ws.send(JSON.stringify({
+                type: 'auth',
+                id: 'auth-' + Date.now(),
+                timestamp: Date.now(),
+                payload: { token }
+            }));
+
+            log('🔐 发送认证请求...', 'info');
+        }
+
+        function subscribeTask() {
+            if (!ws) {
+                log('请先连接 WebSocket', 'error');
+                return;
+            }
+
+            const videoId = document.getElementById('videoIdInput').value.trim();
+            if (!videoId) {
+                log('请输入 videoId', 'error');
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                type: 'subscribe_task',
+                id: 'sub-' + Date.now(),
+                timestamp: Date.now(),
+                payload: { videoId }
+            }));
+
+            log('📺 订阅任务: ' + videoId, 'info');
+        }
+
+        function unsubscribeTask() {
+            if (!ws || !currentVideoId) {
+                log('没有订阅的任务', 'error');
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                type: 'unsubscribe_task',
+                id: 'unsub-' + Date.now(),
+                timestamp: Date.now(),
+                payload: { videoId: currentVideoId }
+            }));
+
+            log('📺 取消订阅: ' + currentVideoId, 'info');
+        }
+
+        async function quickLogin() {
+            log('🔐 快速登录中...', 'info');
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    const token = data.data.token;
+                    document.getElementById('tokenInput').value = token;
+                    currentToken = token;
+                    log('✅ 登录成功！Token 已自动填充', 'success');
+                    
+                    // 自动认证
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        setTimeout(() => authenticate(), 100);
+                    }
+                } else {
+                    log('❌ 登录失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                log('❌ 登录失败: ' + error.message, 'error');
+            }
+        }
+
+        async function createAndSubscribe() {
+            if (!currentToken) {
+                log('请先登录获取 Token', 'error');
+                return;
+            }
+
+            log('🎬 创建测试任务...', 'info');
+
+            try {
+                const response = await fetch('http://localhost:3001/api/video/tasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + currentToken
+                    },
+                    body: JSON.stringify({
+                        prompt: 'WebSocket 测试 - 一只可爱的小猫在阳光下玩耍',
+                        model: 'sora_video2',
+                        duration: 5
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    const videoId = data.data.videoId;
+                    document.getElementById('videoIdInput').value = videoId;
+                    log('✅ 任务创建成功: ' + videoId, 'success');
+                    
+                    // 自动订阅
+                    setTimeout(() => subscribeTask(), 100);
+                } else {
+                    log('❌ 创建任务失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                log('❌ 创建任务失败: ' + error.message, 'error');
+            }
+        }
+
+        async function refreshVideoUrl() {
+            const videoId = document.getElementById('videoIdInput').value.trim();
+            
+            if (!videoId) {
+                log('请输入 videoId', 'error');
+                return;
+            }
+
+            if (!currentToken) {
+                log('请先登录获取 Token', 'error');
+                return;
+            }
+
+            log('🔄 刷新视频URL中...', 'info');
+
+            try {
+                const response = await fetch(`http://localhost:3001/api/video/tasks/${videoId}/refresh-url`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + currentToken
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    const result = data.data;
+                    log('✅ 视频URL已刷新！', 'success');
+                    log(`   后端ID: ${result.videoId}`, 'info');
+                    log(`   外部ID: ${result.externalVideoId}`, 'info');
+                    log(`   视频URL: ${result.videoUrl}`, 'success');
+                    log(`   刷新时间: ${new Date(result.refreshedAt).toLocaleTimeString()}`, 'info');
+                    
+                    // 更新显示
+                    document.getElementById('taskDetails').innerHTML += `
+                        <div style="margin-top: 10px; padding: 10px; background: #e8f5e9; border-radius: 6px;">
+                            <strong>🔄 URL已刷新</strong><br>
+                            <a href="${result.videoUrl}" target="_blank" style="color: #667eea; word-break: break-all;">${result.videoUrl}</a>
+                        </div>
+                    `;
+                } else {
+                    log('❌ 刷新失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                log('❌ 刷新失败: ' + error.message, 'error');
+            }
+        }
+
+        // 页面加载时自动连接
+        window.addEventListener('load', () => {
+            log('🌟 页面加载完成，点击"连接 WebSocket"开始', 'info');
+        });
+    </script>
+</body>
+</html>
+

@@ -60,11 +60,12 @@ export class AuthService {
     // 记录登录日志
     await logService.logLogin(user.id, { username });
 
-    // 生成 JWT Token
+    // 生成 JWT Token（包含 role 用于权限检查）
     const token = jwt.sign(
       { 
         userId: user.id,
-        username: user.username 
+        username: user.username,
+        role: user.role,  // 🔑 添加 role 字段
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN as any }
@@ -90,12 +91,14 @@ export class AuthService {
   /**
    * 验证 Token
    */
-  verifyToken(token: string): { userId: string; username: string } {
+  verifyToken(token: string): { id: string; userId: string; username: string; role?: string } {
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       return {
+        id: decoded.userId, // 添加 id 字段（路由中使用）
         userId: decoded.userId,
         username: decoded.username,
+        role: decoded.role,  // 🔑 添加 role 字段用于权限检查
       };
     } catch (error) {
       throw new Error('Token 无效或已过期');

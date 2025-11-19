@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sora UI Backend API 测试</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 4px solid #4CAF50;
+            background: #f9f9f9;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { color: #4CAF50; font-weight: bold; }
+        .error { color: #f44336; font-weight: bold; }
+        .info { color: #2196F3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Sora UI Backend API 测试</h1>
+        
+        <div class="test-section">
+            <h3>1️⃣ 健康检查</h3>
+            <button onclick="testHealth()">测试 /health</button>
+            <div id="health-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>2️⃣ 用户注册</h3>
+            <button onclick="testRegister()">注册用户</button>
+            <div id="register-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>3️⃣ 用户登录</h3>
+            <button onclick="testLogin()">登录获取Token</button>
+            <div id="login-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>4️⃣ 创建视频任务</h3>
+            <button onclick="testCreateTask()">创建任务</button>
+            <div id="task-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>5️⃣ 查询任务状态</h3>
+            <button onclick="testQueryTask()">查询任务</button>
+            <div id="query-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>6️⃣ 任务统计</h3>
+            <button onclick="testStats()">获取统计</button>
+            <div id="stats-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🚀 一键测试全部</h3>
+            <button onclick="testAll()" style="background: #2196F3;">执行全部测试</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        let token = '';
+        let currentVideoId = '';
+
+        async function testHealth() {
+            const result = document.getElementById('health-result');
+            try {
+                const res = await fetch(`${API_BASE}/health`);
+                const data = await res.json();
+                result.innerHTML = `<span class="success">✅ 成功</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (err) {
+                result.innerHTML = `<span class="error">❌ 失败: ${err.message}</span>`;
+            }
+        }
+
+        async function testRegister() {
+            const result = document.getElementById('register-result');
+            try {
+                const res = await fetch(`${API_BASE}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'testuser_' + Date.now(),
+                        password: 'Test123456!',
+                        email: `test${Date.now()}@example.com`
+                    })
+                });
+                const data = await res.json();
+                result.innerHTML = `<span class="${res.ok ? 'success' : 'error'}">${res.ok ? '✅' : '❌'} ${res.status}</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (err) {
+                result.innerHTML = `<span class="error">❌ 失败: ${err.message}</span>`;
+            }
+        }
+
+        async function testLogin() {
+            const result = document.getElementById('login-result');
+            try {
+                // 先注册
+                await fetch(`${API_BASE}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'testuser',
+                        password: 'Test123456!',
+                        email: 'test@example.com'
+                    })
+                });
+
+                // 再登录
+                const res = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'testuser',
+                        password: 'Test123456!'
+                    })
+                });
+                const data = await res.json();
+                if (data.success && data.data.token) {
+                    token = data.data.token;
+                    result.innerHTML = `<span class="success">✅ 登录成功</span>\n<span class="info">Token: ${token.substring(0, 30)}...</span>\n${JSON.stringify(data, null, 2)}`;
+                } else {
+                    result.innerHTML = `<span class="error">❌ ${res.status}</span>\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (err) {
+                result.innerHTML = `<span class="error">❌ 失败: ${err.message}</span>`;
+            }
+        }
+
+        async function testCreateTask() {
+            const result = document.getElementById('task-result');
+            if (!token) {
+                result.innerHTML = '<span class="error">❌ 请先登录获取Token</span>';
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/video/tasks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        prompt: '一只可爱的小猫在海边玩耍，夕阳西下，画面温馨美好',
+                        model: 'sora_video2',
+                        duration: 5
+                    })
+                });
+                const data = await res.json();
+                if (data.success && data.data.videoId) {
+                    currentVideoId = data.data.videoId;
+                    result.innerHTML = `<span class="success">✅ 任务创建成功</span>\n<span class="info">视频ID: ${currentVideoId}</span>\n${JSON.stringify(data, null, 2)}`;
+                } else {
+                    result.innerHTML = `<span class="error">❌ ${res.status}</span>\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (err) {
+                result.innerHTML = `<span class="error">❌ 失败: ${err.message}</span>`;
+            }
+        }
+
+        async function testQueryTask() {
+            const result = document.getElementById('query-result');
+            if (!token) {
+                result.innerHTML = '<span class="error">❌ 请先登录</span>';
+                return;
+            }
+            if (!currentVideoId) {
+                result.innerHTML = '<span class="error">❌ 请先创建任务</span>';
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/video/tasks/${currentVideoId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                result.innerHTML = `<span class="${res.ok ? 'success' : 'error'}">${res.ok ? '✅' : '❌'} ${res.status}</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (err) {
+                result.innerHTML = `<span class="error">❌ 失败: ${err.message}</span>`;
+            }
+        }
+
+        async function testStats() {
+            const result = document.getElementById('stats-result');
+            if (!token) {
+                result.innerHTML = '<span class="error">❌ 请先登录</span>';
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/video/stats`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                result.innerHTML = `<span class="${res.ok ? 'success' : 'error'}">${res.ok ? '✅' : '❌'} ${res.status}</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (err) {
+                result.innerHTML = `<span class="error">❌ 失败: ${err.message}</span>`;
+            }
+        }
+
+        async function testAll() {
+            await testHealth();
+            await new Promise(r => setTimeout(r, 500));
+            await testRegister();
+            await new Promise(r => setTimeout(r, 500));
+            await testLogin();
+            await new Promise(r => setTimeout(r, 500));
+            await testCreateTask();
+            await new Promise(r => setTimeout(r, 500));
+            await testQueryTask();
+            await new Promise(r => setTimeout(r, 500));
+            await testStats();
+        }
+    </script>
+</body>
+</html>
+

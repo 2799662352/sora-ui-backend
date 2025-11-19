@@ -22,6 +22,9 @@ export const db = global.prisma || new PrismaClient({
     : ['error'],
 });
 
+// 🔥 导出 prisma（别名）
+export const prisma = db;
+
 if (process.env.NODE_ENV !== 'production') {
   global.prisma = db;
 }

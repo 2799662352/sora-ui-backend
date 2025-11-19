@@ -46,3 +46,40 @@ export const authMiddleware = async (
   }
 };
 
+/**
+ * 管理员权限检查中间件
+ * 必须在 authMiddleware 之后使用
+ */
+export const adminMiddleware = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const user = (req as any).user;
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: '未认证',
+      } as APIResponse);
+    }
+
+    // 检查用户角色是否为管理员
+    if (user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: '权限不足：需要管理员权限',
+      } as APIResponse);
+    }
+
+    next();
+  } catch (error: any) {
+    console.error('权限检查失败:', error);
+    res.status(403).json({
+      success: false,
+      message: error.message || '权限检查失败',
+    } as APIResponse);
+  }
+};
+

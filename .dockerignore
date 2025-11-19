@@ -12,7 +12,7 @@ yarn.lock
 .yarn
 
 # ============ TypeScript ============
-dist
+# dist  # 🔥 n8n模式：保留 dist/，使用预编译版本
 *.tsbuildinfo
 tsconfig.tsbuildinfo
 

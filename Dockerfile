@@ -1,28 +1,12 @@
-# ============ Stage 1: Build ============
-FROM node:18-alpine AS builder
+# ============ 预编译模式 Dockerfile ============
+# 🔥 使用本地编译好的 dist/ 目录，跳过 Docker 内编译
+# 
+# 优势：
+# - 避免 Docker 内 npm ci 依赖问题
+# - 更快的构建速度
+# - 确保使用最新代码
 
-WORKDIR /app
-
-# 复制 package 文件
-COPY package*.json ./
-
-# 安装所有依赖（包括 devDependencies，用于构建）
-RUN npm ci
-
-# 复制源代码
-COPY . .
-
-# 生成 Prisma 客户端
-RUN npx prisma generate
-
-# 构建 TypeScript
-RUN npm run build
-
-# 清理 devDependencies（可选，节省空间）
-RUN npm prune --production
-
-# ============ Stage 2: Runtime ============
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -30,12 +14,16 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# 复制生产依赖
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package*.json ./
-# 复制 Prisma schema 和生成的客户端
-COPY --from=builder /app/prisma ./prisma
+# 复制 package 文件并安装生产依赖
+COPY package*.json ./
+RUN npm ci --only=production
+
+# 🔥 复制本地预编译的 dist/ 目录
+COPY dist ./dist
+COPY prisma ./prisma
+
+# 生成 Prisma 客户端
+RUN npx prisma generate
 
 # 创建必要的目录
 RUN mkdir -p /app/updates /app/logs

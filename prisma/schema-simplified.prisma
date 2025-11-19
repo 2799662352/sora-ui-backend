@@ -1,0 +1,179 @@
+// 🔥 Sora UI Backend - 精简版 Prisma Schema
+// 遵循原则：KISS（Keep It Simple）、DRY、Low Coupling
+// 优化目标：只存储核心ID映射和状态，大额数据由前端本地存储
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ 用户表（保持不变） ============
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String?  @unique
+  password  String
+  
+  role      UserRole @default(USER)
+  isActive  Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLogin DateTime?
+  
+  license   License?
+  logs      ActivityLog[]
+  videoTasks VideoTask[]
+  
+  @@index([email])
+  @@index([username])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+// ============ 许可证表（保持不变） ============
+model License {
+  id          String       @id @default(uuid())
+  licenseKey  String       @unique
+  type        LicenseType
+  
+  userId      String?      @unique
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  isActive    Boolean      @default(true)
+  deviceId    String?
+  features    Json         @default("{}")
+  
+  activatedAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([licenseKey])
+  @@index([userId])
+}
+
+enum LicenseType {
+  TRIAL
+  PRO
+  ENTERPRISE
+}
+
+// ============ 活动日志表（保持不变） ============
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  action    String
+  details   Json     @default("{}")
+  
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ============ 系统配置表（保持不变） ============
+model SystemConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============ 🔥 视频任务表（精简版） ============
+model VideoTask {
+  id              String       @id @default(uuid())
+  videoId         String       @unique  // 内部视频 ID
+  externalTaskId  String?              // 外部 API 的任务 ID
+  
+  // 用户关联
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 🔥 核心状态信息（轻量）
+  status          TaskStatus   @default(QUEUED)
+  progress        Int          @default(0)  // 0-100
+  
+  // 🔥 基本信息（必需，轻量）
+  model           String                    // 模型名称：sora_video2, gemini 等
+  apiConfigId     String?                   // 使用的 API 配置 ID
+  mediaType       MediaType    @default(VIDEO) // VIDEO 或 IMAGE
+  
+  // 🔥 Prompt 摘要（用于去重和搜索，不存完整内容）
+  promptHash      String?                   // Prompt 的 SHA256 hash
+  promptPreview   String?      @db.VarChar(200) // Prompt 前 200 字符
+  
+  // 🔥 错误信息（简化）
+  errorCode       String?                   // 错误代码
+  errorMessage    String?      @db.Text    // 错误信息文本
+  
+  // 🔥 时间戳（必需）
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  completedAt     DateTime?
+  
+  // 🔥 性能优化索引（精简版）
+  @@index([videoId])           // 主查询
+  @@index([externalTaskId])    // 外部ID查询
+  @@index([userId, status])    // 用户任务列表
+  @@index([status, createdAt]) // 全局任务队列
+  @@index([promptHash])        // 去重查询
+}
+
+enum TaskStatus {
+  QUEUED      // 排队中
+  PROCESSING  // 处理中
+  COMPLETED   // 已完成
+  FAILED      // 失败
+  CANCELLED   // 已取消
+}
+
+enum MediaType {
+  VIDEO       // 视频
+  IMAGE       // 图片
+}
+
+// ============ 🔥 字段变化说明 ============
+//
+// ❌ 删除的字段（大额数据，由前端本地存储）：
+// - prompt String @db.Text           (1-10 KB)
+// - referenceImage String @db.Text   (1-5 MB)
+// - videoUrl String @db.Text         (100 B)
+// - imageUrl String @db.Text         (100 B)
+// - size String                      (10 B)
+// - duration Int                     (4 B)
+// - watermark Boolean                (1 B)
+// - aspectRatio String               (10 B)
+// - metadata Json                    (1-5 KB)
+// - taskId String                    (已被 externalTaskId 替代)
+// - isAsync Boolean                  (不需要)
+// - pollCount Int                    (不需要)
+// - lastPollTime DateTime            (不需要)
+// - startedAt DateTime               (不需要)
+// - apiEndpoint String               (不需要，从 apiConfigId 获取)
+//
+// ✅ 新增的字段（轻量优化）：
+// + promptHash String                (32 B，用于去重)
+// + promptPreview String(200)        (200 B，用于预览)
+//
+// 🎯 精简效果：
+// - 当前：每条记录 ~1-5 MB
+// - 优化后：每条记录 ~1 KB
+// - 节省：99% 存储空间
+//
+
