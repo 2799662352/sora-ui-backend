@@ -1,3 +1,26 @@
+# 💻 2025-11-21 SoraRelayController 核心代码归档
+
+**归档日期**: 2025-11-21  
+**文件**: `src/controllers/soraRelayController.ts`  
+**版本说明**: 包含 Remix 功能、Tokens-Pool 扩展参数支持的完整 Relay 实现。
+
+---
+
+## 📝 核心功能概览
+
+本版本控制器实现了以下关键特性：
+
+1.  **Relay 架构**: 接收前端请求 -> 转发至外部 Sora API -> 本地数据库记录 -> 启动轮询。
+2.  **Remix 功能**: 支持基于已有视频生成新视频（`/tasks/:videoId/remix`），使用 Metadata Pattern 存储血缘关系。
+3.  **Tokens-Pool 扩展支持**: 支持 `watermark`, `hd`, `private`, `n` 等扩展参数。
+4.  **智能参数映射**: 自动处理前端模型名到后端模型名的映射，以及尺寸/宽高比的智能计算。
+5.  **文件上传处理**: 使用 `multer` 内存存储处理参考图片上传。
+
+---
+
+## 📄 完整代码快照
+
+```typescript:src/controllers/soraRelayController.ts
 // src/controllers/soraRelayController.ts
 /**
  * 🔥 Sora 视频生成完全后端转发（完全参考 LiteLLM Relay）
@@ -24,7 +47,6 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../loaders/prisma';
 import { TaskStatus } from '@prisma/client';
-import { VideoTaskMetadata } from '../types';
 import { startTaskPolling } from '../services/taskPollingService';
 import { mapModelName, getSizeByAspectRatio } from '../utils/modelMapper';
 
@@ -262,9 +284,14 @@ export const relaySoraVideoGeneration = [
 ];
 
 /**
- * 🔥 Remix (视频编辑) - Metadata Pattern
+ * 🔥 Remix 视频 (基于已有视频生成新视频)
  * 
- * POST /api/relay/sora/videos/:videoId/remix
+ * POST /api/video/tasks/:videoId/remix
+ * 
+ * 原理：
+ * 1. 查找原视频的 externalTaskId
+ * 2. 调用 POST /v1/videos/{id}/remix
+ * 3. 返回新的任务ID
  */
 export const remixSoraVideo = async (req: AuthRequest, res: Response) => {
   const startTime = new Date();
@@ -293,10 +320,7 @@ export const remixSoraVideo = async (req: AuthRequest, res: Response) => {
     }
     
     // 2️⃣ 调用外部 Remix API
-    const SORA_API_KEY = process.env.SORA_API_KEY;
-    if (!SORA_API_KEY) {
-      throw new Error('SORA_API_KEY 未配置');
-    }
+    const SORA_API_KEY = process.env.SORA_API_KEY || 'sk-XlwdCKIn8g7sJ672o5UOawhOqvXYQKhOwqaFzPv8bH2e16HYS8dS55wFIKiBvqTy';
     const SORA_API_BASE = process.env.SORA_API_BASE || 'http://45.8.22.95:8000';
     const url = `${SORA_API_BASE}/sora/v1/videos/${originalTask.externalTaskId}/remix`;
     
@@ -345,7 +369,7 @@ export const remixSoraVideo = async (req: AuthRequest, res: Response) => {
           remix_from: videoId,
           remix_from_external: originalTask.externalTaskId,
           type: 'remix'
-        } as VideoTaskMetadata,
+        },
       },
     });
     
@@ -429,3 +453,6 @@ export const querySoraVideoStatus = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+```
+
+

@@ -43,8 +43,8 @@ services:
 
   # ============ Sora UI Backend API ============
   backend:
-    # 🔥 使用 Docker Hub 镜像（已修复所有 Bug）
-    image: zuozuoliang999/sora-ui-backend:v1.1.1-stable
+    # 🔥 使用 Docker Hub 镜像（已修复所有 Bug，包含 Remix 功能）
+    image: zuozuoliang999/sora-ui-backend:v1.2.1-remix
     # 如需使用最新版本，取消下面的注释：
     # image: zuozuoliang999/sora-ui-backend:latest
     container_name: sora-ui-backend

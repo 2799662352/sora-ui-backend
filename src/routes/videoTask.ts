@@ -8,6 +8,7 @@ import { videoTaskRepository } from '../repositories/videoTaskRepository';
 import { APIResponse } from '../types';
 import { AppError } from '../utils/errors';
 import { MediaType, TaskStatus } from '@prisma/client';
+import { remixSoraVideo } from '../controllers/soraRelayController';
 
 // 扩展 Request 类型以包含 user
 interface AuthRequest extends Request {
@@ -88,6 +89,14 @@ router.post('/tasks', authMiddleware, async (req: AuthRequest, res: Response, ne
     next(error);
   }
 });
+
+/**
+ * 🔥 Remix (视频编辑) 接口
+ * POST /api/video/tasks/:videoId/remix
+ * 
+ * 专门处理 JSON 格式的 Remix 请求
+ */
+router.post('/tasks/:videoId/remix', authMiddleware, remixSoraVideo as any);
 
 /**
  * 获取单个视频任务详情
@@ -376,7 +385,7 @@ router.post('/tasks/:videoId/retry', authMiddleware, async (req: AuthRequest, re
     });
     
     // 4️⃣ 重新启动轮询
-    const { startTaskPolling } = require('../services/taskPolling Service');
+    const { startTaskPolling } = require('../services/taskPollingService');
     startTaskPolling({
       videoId,
       externalTaskId: newExternalTaskId,

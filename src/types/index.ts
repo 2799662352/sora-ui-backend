@@ -114,7 +114,14 @@ export interface VideoTask {
   updatedAt: Date;
   startedAt?: Date;
   completedAt?: Date;
-  metadata: any;
+  metadata?: VideoTaskMetadata;
+}
+
+export interface VideoTaskMetadata {
+  type?: 'remix' | 'generation';
+  remix_from?: string;
+  remix_from_external?: string;
+  [key: string]: any;
 }
 
 export interface CreateVideoTaskRequest {
