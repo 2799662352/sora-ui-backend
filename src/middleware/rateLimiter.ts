@@ -21,6 +21,8 @@ const RATE_LIMITS = {
   UPLOAD: { max: 10, window: 60 },            // 10 uploads / 1 minute
   DOWNLOAD: { max: 10, window: 60 },          // 10 downloads / 1 minute
   CRITICAL: { max: 20, window: 1200 },        // 20 requests / 20 minutes
+  // 🆕 协作 API 专用限流 - 更宽松，支持频繁的界面刷新
+  COLLAB: { max: 600, window: 60 },           // 600 requests / 1 minute (每秒10个请求)
 };
 
 /**
@@ -135,6 +137,13 @@ export const criticalRateLimit = createRateLimiter(
   RATE_LIMITS.CRITICAL.max,
   RATE_LIMITS.CRITICAL.window,
   'CRITICAL'
+);
+
+// 🆕 协作 API 专用限流
+export const collabRateLimit = createRateLimiter(
+  RATE_LIMITS.COLLAB.max,
+  RATE_LIMITS.COLLAB.window,
+  'COLLAB'
 );
 
 /**

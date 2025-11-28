@@ -27,6 +27,9 @@ import { TaskStatus } from '@prisma/client';
 import { VideoTaskMetadata } from '../types';
 import { startTaskPolling } from '../services/taskPollingService';
 import { mapModelName, getSizeByAspectRatio } from '../utils/modelMapper';
+import { ImageDeduplication } from '../utils/imageDedup';  // 🔥 图片去重
+import * as fs from 'fs';
+import * as path from 'path';
 
 // 🔥 配置 multer（内存存储，用于转发）
 const storage = multer.memoryStorage();
@@ -52,6 +55,32 @@ interface AuthRequest extends Request {
     role: string;
   };
 }
+
+/**
+ * 🔥 检查图片 URL 是否可访问
+ */
+const isImageUrlReachable = async (url: string): Promise<boolean> => {
+  try {
+    await axios.head(url, { timeout: 5000 });
+    return true;
+  } catch (error: any) {
+    console.warn('[SoraRelay] ⚠️ 参考图 URL 不可访问，将改用流式上传:', url);
+    console.warn('[SoraRelay] ⚠️ HEAD 请求失败原因:', error.message);
+    return false;
+  }
+};
+
+/**
+ * 🔥 将图片以二进制方式添加到 FormData
+ */
+const appendBinaryReference = (formData: FormData, file: Express.Multer.File) => {
+  // 🔥 注意：字段名必须是 'input_reference'（不带方括号），与 api易 示例一致
+  formData.append('input_reference', file.buffer, {
+    filename: file.originalname,
+    contentType: file.mimetype,
+    knownLength: file.size,
+  });
+};
 
 /**
  * 🔥 Sora 视频生成 Relay
@@ -165,13 +194,73 @@ export const relaySoraVideoGeneration = [
         console.log('[SoraRelay] 🎨 生成数量:', n);
       }
       
-      // 🔥 添加参考图片
+      // 🔥 添加参考图片（智能回退：URL → 流式 Buffer）
       if (file) {
-        formData.append('input_reference', file.buffer, {
-          filename: file.originalname || 'reference.png',
-          contentType: file.mimetype,
-        });
-        console.log('[SoraRelay] 📎 已添加参考图片');
+        if (!process.env.PUBLIC_BASE_URL) {
+          console.warn('[SoraRelay] ⚠️ 未配置 PUBLIC_BASE_URL，将直接流式转发参考图');
+        }
+        
+        // 1️⃣ 检查图片是否已上传（去重）
+        const dedupResult = await ImageDeduplication.processImage(file.buffer, file.originalname);
+        
+        let imageUrl: string | null = null;
+        
+        if (!dedupResult.isNew && dedupResult.imageUrl) {
+          // ✅ 图片已存在，使用缓存的 URL
+          imageUrl = dedupResult.imageUrl;
+          console.log('[SoraRelay] ♻️  图片去重命中，使用缓存 URL');
+          console.log('[SoraRelay] 🔗 缓存 URL: %s', imageUrl);
+          console.log('[SoraRelay] 📊 节省存储: %s KB', (file.size / 1024).toFixed(2));
+        } else {
+          // 🆕 新图片，保存并生成 URL
+          const uploadsDir = path.join(process.cwd(), 'uploads');
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+          
+          const safeFilename = `ref_${dedupResult.imageHash}.${file.mimetype === 'image/png' ? 'png' : 'jpg'}`;
+          const filePath = path.join(uploadsDir, safeFilename);
+          fs.writeFileSync(filePath, file.buffer);
+          
+          // 生成公网 URL
+          const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
+          if (PUBLIC_BASE_URL) {
+            imageUrl = `${PUBLIC_BASE_URL}/uploads/${safeFilename}`;
+            
+            // 缓存 URL（1小时，与自动清理时间一致）
+            await ImageDeduplication.cacheImageUrl(dedupResult.imageHash, imageUrl, 3600);
+          } else {
+            console.warn('[SoraRelay] ⚠️ PUBLIC_BASE_URL 未设置，无法生成公网 URL');
+          }
+          
+          console.log('[SoraRelay] 📎 新图片已保存');
+          console.log('[SoraRelay] 📁 本地路径: %s', filePath);
+          if (imageUrl) {
+            console.log('[SoraRelay] 🔗 公网 URL: %s', imageUrl);
+          }
+          console.log('[SoraRelay] 🔑 图片哈希: %s', dedupResult.imageHash.substring(0, 12) + '...');
+          console.log('[SoraRelay] 📊 原始文件: %s (%s KB)', file.originalname, (file.size / 1024).toFixed(2));
+        }
+        
+        // 🔥 智能回退：URL 不可访问时，改用流式 Buffer
+        let shouldStreamBinary = false;
+        
+        if (imageUrl) {
+          const reachable = await isImageUrlReachable(imageUrl);
+          if (reachable) {
+            // 🔥 注意：字段名必须是 'input_reference'（不带方括号）
+            formData.append('input_reference', imageUrl);
+          } else {
+            shouldStreamBinary = true;
+          }
+        } else {
+          shouldStreamBinary = true;
+        }
+        
+        if (shouldStreamBinary) {
+          console.log('[SoraRelay] 📡 使用流式方式直接转发参考图');
+          appendBinaryReference(formData, file);
+        }
       }
       
       // 4️⃣ 🔥 调用外部 Sora API
@@ -265,19 +354,29 @@ export const relaySoraVideoGeneration = [
  * 🔥 Remix (视频编辑) - Metadata Pattern
  * 
  * POST /api/relay/sora/videos/:videoId/remix
+ * 
+ * 🔥 支持两种格式：
+ * 1. JSON: { prompt, model }
+ * 2. FormData: prompt, model, input_reference (可选)
  */
-export const remixSoraVideo = async (req: AuthRequest, res: Response) => {
+export const remixSoraVideo = [
+  upload.single('input_reference'),  // 🔥 支持 FormData 格式
+  async (req: AuthRequest, res: Response) => {
   const startTime = new Date();
   const requestId = uuidv4();
   
   try {
     const { videoId } = req.params;
-    const { prompt, model } = req.body;
+    // 🔥 支持 FormData 和 JSON 两种格式
+    const prompt = req.body.prompt;
+    const model = req.body.model;
+    const file = (req as any).file as Express.Multer.File | undefined;
     const userId = req.user!.userId;
     
     console.log('[SoraRelay] 📥 收到 Remix 请求:', requestId);
     console.log('  - 原视频ID:', videoId);
     console.log('  - 新提示词:', prompt);
+    console.log('  - 请求格式:', file ? 'FormData (带图片)' : 'JSON/FormData');
     
     // 1️⃣ 查找原任务（获取 externalTaskId）
     const originalTask = await prisma.videoTask.findUnique({
@@ -293,29 +392,62 @@ export const remixSoraVideo = async (req: AuthRequest, res: Response) => {
     }
     
     // 2️⃣ 调用外部 Remix API
-    const SORA_API_KEY = process.env.SORA_API_KEY;
-    if (!SORA_API_KEY) {
-      throw new Error('SORA_API_KEY 未配置');
-    }
+    // 🔥 修复：与 createSoraVideo 保持一致，添加默认 API Key
+    const SORA_API_KEY = process.env.SORA_API_KEY || 
+      'sk-XlwdCKIn8g7sJ672o5UOawhOqvXYQKhOwqaFzPv8bH2e16HYS8dS55wFIKiBvqTy';
     const SORA_API_BASE = process.env.SORA_API_BASE || 'http://45.8.22.95:8000';
     const url = `${SORA_API_BASE}/sora/v1/videos/${originalTask.externalTaskId}/remix`;
     
     console.log('[SoraRelay] 📤 调用外部 Remix API:', url);
     
-    const response = await axios.post(
-      url,
-      {
-        prompt,
-        model: model || originalTask.model, // 默认使用原模型
-      },
-      {
+    let response;
+    
+    // 🔥 如果有图片，使用 FormData 格式
+    if (file) {
+      console.log('[SoraRelay] 🖼️ 检测到参考图片，使用 FormData 格式');
+      console.log('  - 文件名:', file.originalname);
+      console.log('  - 文件大小:', (file.size / 1024).toFixed(2), 'KB');
+      console.log('  - MIME 类型:', file.mimetype);
+      
+      const formData = new FormData();
+      formData.append('prompt', prompt || '');
+      formData.append('model', model || originalTask.model || 'sora_video2');
+      
+      // 🔥 添加图片到 FormData
+      formData.append('input_reference', file.buffer, {
+        filename: file.originalname,
+        contentType: file.mimetype,
+        knownLength: file.size,
+      });
+      
+      response = await axios.post(url, formData, {
         headers: {
           'Authorization': SORA_API_KEY,
-          'Content-Type': 'application/json',
+          ...formData.getHeaders(),
         },
         timeout: 30000,
-      }
-    );
+      });
+      
+      console.log('[SoraRelay] ✅ FormData 请求成功');
+    } else {
+      // 没有图片，使用 JSON 格式
+      console.log('[SoraRelay] 📝 无参考图片，使用 JSON 格式');
+      
+      response = await axios.post(
+        url,
+        {
+          prompt,
+          model: model || originalTask.model, // 默认使用原模型
+        },
+        {
+          headers: {
+            'Authorization': SORA_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          timeout: 30000,
+        }
+      );
+    }
     
     // 3️⃣ 获取新任务 ID
     const newExternalTaskId = response.data.id || response.data;
@@ -383,7 +515,7 @@ export const remixSoraVideo = async (req: AuthRequest, res: Response) => {
       details: error.response?.data,
     });
   }
-};
+}];
 
 /**
  * 🔥 查询视频状态（通过后端）

@@ -163,6 +163,63 @@ router.post('/tasks/:videoId/refresh-url', authMiddleware, async (req: AuthReque
 });
 
 /**
+ * 🔥 BUG-003 修复：通过 clientRequestId 批量恢复任务
+ * POST /api/video/tasks/recover
+ * 
+ * 用途：前端重启后，使用本地 generating 任务的 clientRequestId 查询后端
+ * 返回匹配的任务列表，前端可以用来更新本地任务的 backendVideoId
+ */
+router.post('/tasks/recover', authMiddleware, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.id;
+    const { clientRequestIds } = req.body;
+    
+    console.log(`[VideoTask] 🔄 任务恢复请求: ${clientRequestIds?.length || 0} 个 clientRequestId`);
+    
+    if (!clientRequestIds || !Array.isArray(clientRequestIds) || clientRequestIds.length === 0) {
+      return res.json({
+        success: true,
+        data: { tasks: [], matched: 0 },
+        message: '没有需要恢复的任务',
+      } as APIResponse);
+    }
+    
+    // 限制一次最多查询 50 个
+    const limitedIds = clientRequestIds.slice(0, 50);
+    
+    const tasks = await videoTaskRepository.findByClientRequestIds(limitedIds, userId);
+    
+    // 转换为前端需要的格式
+    const result = tasks.map(task => ({
+      clientRequestId: task.clientRequestId,
+      videoId: task.videoId,
+      externalTaskId: task.externalTaskId,
+      status: task.status,
+      progress: task.progress,
+      videoUrl: task.videoUrl,
+      imageUrl: task.imageUrl,
+      errorMessage: task.errorMessage,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+    }));
+    
+    console.log(`[VideoTask] ✅ 恢复任务: ${result.length} / ${limitedIds.length} 匹配`);
+    
+    res.json({
+      success: true,
+      data: {
+        tasks: result,
+        matched: result.length,
+        requested: limitedIds.length,
+      },
+    } as APIResponse);
+  } catch (error: any) {
+    console.error('[VideoTask] ❌ 任务恢复失败:', error.message);
+    next(error);
+  }
+});
+
+/**
  * 获取用户的视频任务列表
  * GET /api/video/tasks
  * 

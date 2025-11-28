@@ -1,0 +1,98 @@
+[SSE] 鉁?Service initialized (heartbeat: 60s)
+[SoraRelay-Router] 鉁?璺敱宸叉敞鍐? POST /videos
+[Redis] 馃敆 Connecting...
+[Redis] 鉁?Ready
+[Redis] 馃搵 Namespace: sora-ui
+[Redis] 鈴?Default TTL: 3600s
+[Redis] 鉁?Health check passed
+鉁?Redis connected successfully
+[TaskPolling] 馃攧 鎵弿 Redis 涓殑鏈畬鎴愪换鍔?..
+[TaskPolling] 馃攳 鍙戠幇 0 涓湭瀹屾垚浠诲姟
+[TaskPolling] 鉁?鏁呴殰鎭㈠瀹屾垚
+鉁?Database connected successfully
+
+馃殌 Sora UI Backend API 宸插惎鍔?馃摗 鏈嶅姟鍦板潃: http://localhost:3001
+馃實 鐜: production
+馃梽锔? 鏁版嵁搴? PostgreSQL (Prisma ORM)
+馃敟 缂撳瓨: Redis (宸茶繛鎺?
+
+馃摎 API 鏂囨。:
+   - 璁よ瘉: http://localhost:3001/api/auth
+   - SSE: http://localhost:3001/api/sse
+   - 鍋ュ悍妫€鏌? http://localhost:3001/health
+
+[2025-11-26T12:04:01.802Z] GET /health
+[2025-11-26T12:04:14.880Z] POST /api/auth/login
+鉁?鐢ㄦ埛鐧诲綍鎴愬姛: admin
+[2025-11-26T12:04:15.128Z] POST /api/relay/sora/videos
+[SoraRelay-Route] 馃幆 鏀跺埌 POST /videos
+  - Content-Type: multipart/form-data; boundary=------------------------LheWKAW0mpJNVRawSpxUSL
+  - Authorization: 鉁?瀛樺湪
+[SoraRelay] 馃摜 鏀跺埌鐢熸垚璇锋眰: ce6a93c0-a8cc-40d1-acef-2cd764c7c38d
+  - 鐢ㄦ埛: admin
+  - 妯″瀷: sora_video2
+  - 鎻愮ず璇? 璁╄繖涓姩婕鑹插井绗戝苟鐪ㄧ溂锛岃儗鏅繚鎸佷笉鍙?..
+  - 灏哄: 1280x720
+  - 鏃堕暱: 10
+  - 鍙傝€冨浘: image-1761764270234.png (512.99KB)
+[ModelMapper] 鉁?鏄犲皠: sora_video2 鈫?sora_video2
+[SoraRelay] 馃攧 Model鏄犲皠: 鍓嶇[sora_video2] 鈫?澶栭儴API[sora_video2]
+[SoraRelay] 馃搸 宸叉坊鍔犲弬鑰冨浘鐗?(input_reference[])
+[SoraRelay] 馃摛 杞彂鍒板閮ˋPI: http://45.8.22.95:8000/sora/v1/videos
+[SoraRelay] 鉁?澶栭儴API鍝嶅簲: video_b6772a7c-e1dd-4df4-8ece-c31c8925e677
+[SoraRelay] 馃捑 浠诲姟宸蹭繚瀛樺埌鏁版嵁搴? video_1764158656817_8ubvk38
+[SoraRelay] 馃攧 鍚庣杞宸插惎鍔紝灏嗛€氳繃 SSE 鎺ㄩ€佹洿鏂?[SoraRelay] 鉁?璇锋眰瀹屾垚 (1685ms)
+[TaskPolling] 鉁?鑾峰緱鍒嗗竷寮忛攣: video_1764158656817_8ubvk38
+[Redis] 鉁?Set: sora-ui:polling:video_1764158656817_8ubvk38 (1ms, TTL: 3600s)
+[TaskPolling] 馃捑 浠诲姟璇︽儏宸插瓨鍏?Redis: video_1764158656817_8ubvk38
+[TaskPolling] 馃殌 寮€濮嬭疆璇换鍔? video_1764158656817_8ubvk38 鈫?video_b6772a7c-e1dd-4df4-8ece-c31c8925e677
+[Redis] 鉁?Hit: sora-ui:polling:video_1764158656817_8ubvk38 (1ms)
+[TaskPolling] 馃攳 鏌ヨ #1: video_b6772a7c-e1dd-4df4-8ece-c31c8925e677
+[SSE] 馃攳 pushTaskUpdate 璋冪敤
+[SSE] 馃攳 鐩爣鐢ㄦ埛: 1f081744-d8bd-4510-8d9b-ced3116151a3
+[SSE] 馃攳 褰撳墠鎵€鏈夌敤鎴? []
+[SSE] 馃攳 payload.videoUrl: undefined
+[SSE] 鈿狅笍 鐢ㄦ埛 1f081744-d8bd-4510-8d9b-ced3116151a3 鏃犺繛鎺?[SSE] 馃攳 userSessions 璇︽儏: []
+[VideoTaskRepo] 鏇存柊瑙嗛浠诲姟: video_1764158656817_8ubvk38 { status: 'PROCESSING', progress: 0 }
+[TaskPolling] 馃捑 鏁版嵁搴撳凡鏇存柊: video_1764158656817_8ubvk38 鈫?PROCESSING
+[TaskPolling] 鈿狅笍  SSE 鎺ㄩ€佸け璐ワ紝鐢ㄦ埛鍙兘宸叉柇寮€: 1f081744-d8bd-4510-8d9b-ced3116151a3
+[Redis] 鉁?Hit: sora-ui:polling:video_1764158656817_8ubvk38 (0ms)
+[TaskPolling] 馃攳 鏌ヨ #2: video_b6772a7c-e1dd-4df4-8ece-c31c8925e677
+[SSE] 馃攳 pushTaskUpdate 璋冪敤
+[SSE] 馃攳 鐩爣鐢ㄦ埛: 1f081744-d8bd-4510-8d9b-ced3116151a3
+[SSE] 馃攳 褰撳墠鎵€鏈夌敤鎴? []
+[SSE] 馃攳 payload.videoUrl: undefined
+[SSE] 鈿狅笍 鐢ㄦ埛 1f081744-d8bd-4510-8d9b-ced3116151a3 鏃犺繛鎺?[SSE] 馃攳 userSessions 璇︽儏: []
+[TaskPolling] 鈿狅笍  SSE 鎺ㄩ€佸け璐ワ紝鐢ㄦ埛鍙兘宸叉柇寮€: 1f081744-d8bd-4510-8d9b-ced3116151a3
+[VideoTaskRepo] 鏇存柊瑙嗛浠诲姟: video_1764158656817_8ubvk38 { status: 'PROCESSING', progress: 0 }
+[TaskPolling] 馃捑 鏁版嵁搴撳凡鏇存柊: video_1764158656817_8ubvk38 鈫?PROCESSING
+[Redis] 鉁?Hit: sora-ui:polling:video_1764158656817_8ubvk38 (0ms)
+[TaskPolling] 馃攳 鏌ヨ #3: video_b6772a7c-e1dd-4df4-8ece-c31c8925e677
+[TaskPolling] 鈿狅笍  SSE 鎺ㄩ€佸け璐ワ紝鐢ㄦ埛鍙兘宸叉柇寮€: 1f081744-d8bd-4510-8d9b-ced3116151a3
+[SSE] 馃攳 pushTaskUpdate 璋冪敤
+[SSE] 馃攳 鐩爣鐢ㄦ埛: 1f081744-d8bd-4510-8d9b-ced3116151a3
+[SSE] 馃攳 褰撳墠鎵€鏈夌敤鎴? []
+[SSE] 馃攳 payload.videoUrl: undefined
+[SSE] 鈿狅笍 鐢ㄦ埛 1f081744-d8bd-4510-8d9b-ced3116151a3 鏃犺繛鎺?[SSE] 馃攳 userSessions 璇︽儏: []
+[VideoTaskRepo] 鏇存柊瑙嗛浠诲姟: video_1764158656817_8ubvk38 { status: 'PROCESSING', progress: 0 }
+[TaskPolling] 馃捑 鏁版嵁搴撳凡鏇存柊: video_1764158656817_8ubvk38 鈫?PROCESSING
+[Redis] 鉁?Hit: sora-ui:polling:video_1764158656817_8ubvk38 (0ms)
+[TaskPolling] 馃攳 鏌ヨ #4: video_b6772a7c-e1dd-4df4-8ece-c31c8925e677
+[2025-11-26T12:04:31.854Z] GET /health
+[TaskPolling] 鉂?浠诲姟澶辫触: 鏂囦欢涓婁紶澶辫触锛岃閲嶆柊鍙戣捣璇锋眰
+[SSE] 馃攳 pushTaskUpdate 璋冪敤
+[TaskPolling] 馃摝 閿欒璇︽儏: { message: '鏂囦欢涓婁紶澶辫触锛岃閲嶆柊鍙戣捣璇锋眰' }
+[TaskPolling] 馃毇 姘镐箙鎬ч敊璇紝涓嶉噸璇? 鏂囦欢涓婁紶澶辫触锛岃閲嶆柊鍙戣捣璇锋眰
+[TaskPolling] 馃敶 浠诲姟鏈€缁堝け璐? video_1764158656817_8ubvk38
+[SSE] 馃攳 鐩爣鐢ㄦ埛: 1f081744-d8bd-4510-8d9b-ced3116151a3
+[SSE] 馃攳 褰撳墠鎵€鏈夌敤鎴? []
+[SSE] 馃攳 payload.videoUrl: undefined
+[SSE] 鈿狅笍 鐢ㄦ埛 1f081744-d8bd-4510-8d9b-ced3116151a3 鏃犺繛鎺?[SSE] 馃攳 userSessions 璇︽儏: []
+[VideoTaskRepo] 鏇存柊瑙嗛浠诲姟: video_1764158656817_8ubvk38 { status: 'FAILED', progress: undefined }
+[TaskPolling] 馃捑 鏁版嵁搴撳凡鏇存柊: video_1764158656817_8ubvk38 鈫?FAILED
+[Redis] 馃棏锔?Deleted: sora-ui:polling:video_1764158656817_8ubvk38
+[Redis] 馃棏锔?Deleted: sora-ui:poll:count:video_1764158656817_8ubvk38
+[Redis] 馃棏锔?Deleted: sora-ui:lock:polling:video_1764158656817_8ubvk38
+[TaskPolling] 馃洃 鍋滄杞骞舵竻鐞?Redis: video_1764158656817_8ubvk38
+[2025-11-26T12:04:40.119Z] GET /api/video/tasks/video_1764158656817_8ubvk38
+[SSE] 馃挀 蹇冭烦妫€鏌? 0 涓繛鎺?[2025-11-26T12:05:01.916Z] GET /health

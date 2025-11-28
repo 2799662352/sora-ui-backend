@@ -22,6 +22,7 @@ model User {
   username  String   @unique
   email     String?  @unique
   password  String
+  avatar    String?  // 用户头像URL
   
   role      UserRole @default(USER)
   isActive  Boolean  @default(true)
@@ -33,7 +34,19 @@ model User {
   license   License?
   logs      ActivityLog[]
   videoTasks VideoTask[]
-  channels  Channel[]  // 🔥 新增：API Channel 管理
+  channels  Channel[]  // 🔥 API Channel 管理
+  
+  // 🔥 协作系统关联
+  ownedTeams     Team[]        @relation("TeamOwner")
+  teamMemberships TeamMember[]
+  createdTasks   CollabTask[]  @relation("TaskCreator")
+  assignedTasks  CollabTask[]  @relation("TaskAssignee")
+  reviewedTasks  CollabTask[]  @relation("TaskReviewer")
+  taskComments   TaskComment[]
+  taskAttachments TaskAttachment[]
+  taskHistory    TaskHistory[]
+  notifications  Notification[]
+  generationTasks GenerationTask[]  // 🆕 生成任务
   
   @@index([email])
   @@index([username])
@@ -111,6 +124,7 @@ model VideoTask {
   id              String       @id @default(uuid())
   videoId         String       @unique  // 内部视频 ID
   externalTaskId  String?              // 🔥 新字段：外部 API 的任务 ID
+  clientRequestId String?              // 🔥 BUG-003 修复：前端任务 ID，用于关联本地任务和后端任务
   
   // 用户关联
   userId          String
@@ -161,6 +175,7 @@ model VideoTask {
   // 🔥 性能优化索引
   @@index([videoId])
   @@index([externalTaskId])
+  @@index([clientRequestId])  // 🔥 BUG-003 修复：支持通过前端任务 ID 查询
   @@index([userId, status])
   @@index([status, createdAt])
   @@index([promptHash])
@@ -297,6 +312,645 @@ model RequestLog {
   @@map("RequestLog")
 }
 
+// ============ 🔥 协作系统表 ============
+
+// 团队/项目表
+model Team {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  avatar      String?  // 团队头像URL
+  
+  // 创建者（导演）
+  ownerId     String   @map("owner_id")
+  owner       User     @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // 状态
+  status      TeamStatus @default(ACTIVE)
+  
+  // 设置
+  settings    Json     @default("{}")  // 团队配置：通知偏好、权限等
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // 关联
+  members     TeamMember[]
+  projects    Project[]
+  
+  @@index([ownerId])
+  @@index([status])
+  @@map("Team")
+}
+
+enum TeamStatus {
+  ACTIVE
+  ARCHIVED
+  SUSPENDED
+}
+
+// 团队成员表（多对多关系）
+model TeamMember {
+  id        String   @id @default(uuid())
+  
+  teamId    String   @map("team_id")
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 角色
+  role      MemberRole @default(MEMBER)
+  
+  // 状态
+  status    MemberStatus @default(ACTIVE)
+  
+  // 加入信息
+  invitedBy String?  @map("invited_by")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  
+  // 时间戳
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@index([role])
+  @@map("TeamMember")
+}
+
+enum MemberRole {
+  DIRECTOR    // 导演：最高权限，可以管理所有成员和任务
+  LEAD        // 组长：可以管理分配给自己组的任务
+  MEMBER      // 组员：只能编辑和提交自己的任务
+  VIEWER      // 观察者：只读权限
+}
+
+enum MemberStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  LEFT
+}
+
+// 项目表
+model Project {
+  id          String   @id @default(uuid())
+  
+  // 所属团队
+  teamId      String   @map("team_id")
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  // 基本信息
+  name        String
+  description String?  @db.Text
+  cover       String?  // 封面图URL
+  
+  // 状态
+  status      ProjectStatus @default(PLANNING)
+  priority    Int      @default(1)  // 1-5，5最高
+  
+  // 时间规划
+  startDate   DateTime? @map("start_date")
+  dueDate     DateTime? @map("due_date")
+  
+  // 进度统计（缓存）
+  totalTasks  Int      @default(0) @map("total_tasks")
+  completedTasks Int   @default(0) @map("completed_tasks")
+  progress    Float    @default(0)  // 0-100
+  
+  // 设置
+  settings    Json     @default("{}")
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // 关联
+  tasks       CollabTask[]
+  milestones  Milestone[]
+  
+  // 🎬 创作资源关联
+  episodes    Episode[]
+  characters  Character[]
+  scenes      Scene[]
+  items       Item[]
+  generationTasks GenerationTask[]  // 🆕 生成任务
+  
+  @@index([teamId])
+  @@index([status])
+  @@index([priority])
+  @@map("Project")
+}
+
+enum ProjectStatus {
+  PLANNING    // 规划中
+  IN_PROGRESS // 进行中
+  ON_HOLD     // 暂停
+  COMPLETED   // 已完成
+  CANCELLED   // 已取消
+}
+
+// 里程碑表
+model Milestone {
+  id          String   @id @default(uuid())
+  
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // 基本信息
+  name        String
+  description String?  @db.Text
+  
+  // 状态
+  status      MilestoneStatus @default(PENDING)
+  dueDate     DateTime? @map("due_date")
+  completedAt DateTime? @map("completed_at")
+  
+  // 排序
+  sortOrder   Int      @default(0) @map("sort_order")
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // 关联
+  tasks       CollabTask[]
+  
+  @@index([projectId])
+  @@index([status])
+  @@map("Milestone")
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+}
+
+// 协作任务表
+model CollabTask {
+  id          String   @id @default(uuid())
+  
+  // 所属项目
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // 可选里程碑
+  milestoneId String?  @map("milestone_id")
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  
+  // 任务分配
+  assigneeId  String?  @map("assignee_id")
+  assignee    User?    @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  
+  createdById String   @map("created_by_id")
+  createdBy   User     @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  
+  // 基本信息
+  title       String
+  description String?  @db.Text
+  
+  // 任务类型
+  taskType    TaskType @default(GENERAL) @map("task_type")
+  
+  // 状态与优先级
+  status      TaskItemStatus @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  
+  // 时间规划
+  startDate   DateTime? @map("start_date")
+  dueDate     DateTime? @map("due_date")
+  estimatedHours Float?  @map("estimated_hours")
+  actualHours Float?   @map("actual_hours")
+  
+  // 进度
+  progress    Int      @default(0)  // 0-100
+  
+  // 提交内容（URL等）
+  submissionUrl String?  @db.Text @map("submission_url")
+  submissionNote String? @db.Text @map("submission_note")
+  submittedAt DateTime? @map("submitted_at")
+  
+  // 审核信息
+  reviewStatus ReviewStatus? @map("review_status")
+  reviewerId  String?  @map("reviewer_id")
+  reviewer    User?    @relation("TaskReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewNote  String?  @db.Text @map("review_note")
+  reviewedAt  DateTime? @map("reviewed_at")
+  
+  // 标签（JSON数组）
+  tags        String[] @default([])
+  
+  // 排序
+  sortOrder   Int      @default(0) @map("sort_order")
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+  
+  // 关联
+  comments    TaskComment[]
+  attachments TaskAttachment[]
+  history     TaskHistory[]
+  
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([status])
+  @@index([priority])
+  @@index([reviewStatus])
+  @@map("CollabTask")
+}
+
+enum TaskType {
+  GENERAL     // 通用任务
+  VIDEO       // 视频制作
+  DESIGN      // 设计
+  WRITING     // 文案
+  REVIEW      // 审核
+  BUG         // Bug修复
+  FEATURE     // 功能开发
+}
+
+enum TaskItemStatus {
+  TODO        // 待办
+  IN_PROGRESS // 进行中
+  SUBMITTED   // 已提交
+  IN_REVIEW   // 审核中
+  REVISION    // 需修改
+  DONE        // 完成
+  BLOCKED     // 阻塞
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ReviewStatus {
+  PENDING     // 待审核
+  APPROVED    // 已通过
+  REJECTED    // 已拒绝
+  NEEDS_REVISION // 需修改
+}
+
+// 任务评论表
+model TaskComment {
+  id        String   @id @default(uuid())
+  
+  taskId    String   @map("task_id")
+  task      CollabTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  authorId  String   @map("author_id")
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  // 评论内容
+  content   String   @db.Text
+  
+  // 评论类型
+  type      CommentType @default(COMMENT)
+  
+  // 父评论（回复功能）
+  parentId  String?  @map("parent_id")
+  parent    TaskComment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies   TaskComment[] @relation("CommentReplies")
+  
+  // 时间戳
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@index([taskId])
+  @@index([authorId])
+  @@index([parentId])
+  @@map("TaskComment")
+}
+
+enum CommentType {
+  COMMENT     // 普通评论
+  INSTRUCTION // 导演指令
+  FEEDBACK    // 反馈
+  REVISION    // 修改建议
+}
+
+// 任务附件表
+model TaskAttachment {
+  id        String   @id @default(uuid())
+  
+  taskId    String   @map("task_id")
+  task      CollabTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  uploaderId String  @map("uploader_id")
+  uploader  User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  
+  // 文件信息
+  filename  String
+  url       String   @db.Text
+  fileType  String   @map("file_type")  // MIME type
+  fileSize  Int      @map("file_size")  // bytes
+  
+  // 时间戳
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@index([taskId])
+  @@index([uploaderId])
+  @@map("TaskAttachment")
+}
+
+// 任务历史记录表
+model TaskHistory {
+  id        String   @id @default(uuid())
+  
+  taskId    String   @map("task_id")
+  task      CollabTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  actorId   String   @map("actor_id")
+  actor     User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  
+  // 变更信息
+  action    String   // created, updated, status_changed, assigned, reviewed, etc.
+  field     String?  // 变更的字段名
+  oldValue  String?  @db.Text @map("old_value")
+  newValue  String?  @db.Text @map("new_value")
+  
+  // 时间戳
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@index([taskId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("TaskHistory")
+}
+
+// 通知表
+model Notification {
+  id        String   @id @default(uuid())
+  
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 通知内容
+  type      NotificationType
+  title     String
+  content   String   @db.Text
+  
+  // 关联实体
+  entityType String?  @map("entity_type")  // team, project, task, comment
+  entityId  String?  @map("entity_id")
+  
+  // 发送者
+  senderId  String?  @map("sender_id")
+  
+  // 状态
+  isRead    Boolean  @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  
+  // 时间戳
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("Notification")
+}
+
+enum NotificationType {
+  TASK_ASSIGNED     // 任务被分配
+  TASK_SUBMITTED    // 任务已提交
+  TASK_REVIEWED     // 任务被审核
+  TASK_COMMENTED    // 任务被评论
+  TASK_UPDATED      // 任务被更新
+  TASK_DUE_SOON     // 任务即将到期
+  PROJECT_UPDATED   // 项目更新
+  TEAM_INVITATION   // 团队邀请
+  MENTION           // 被@提及
+  SYSTEM            // 系统通知
+}
+
+// ============ 🎬 创作资源模型（巨日禄风格） ============
+
+// 片段/分镜表（Jurilu: 片段管理）
+model Episode {
+  id          String   @id @default(uuid())
+  
+  // 所属项目
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // 基本信息
+  name        String
+  description String?  @db.Text
+  
+  // 状态
+  status      EpisodeStatus @default(DRAFT)
+  
+  // 时长（秒）
+  duration    Int?     // 预计时长
+  
+  // 排序
+  sortOrder   Int      @default(0) @map("sort_order")
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([projectId])
+  @@index([status])
+  @@index([sortOrder])
+  @@map("Episode")
+}
+
+enum EpisodeStatus {
+  DRAFT       // 草稿
+  IN_PROGRESS // 制作中
+  REVIEW      // 审核中
+  COMPLETED   // 已完成
+}
+
+// 角色表（Jurilu: 角色管理）
+model Character {
+  id          String   @id @default(uuid())
+  
+  // 所属项目
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // 基本信息
+  name        String
+  description String?  @db.Text
+  
+  // 角色属性
+  personality String?  @db.Text    // 性格描述
+  appearance  String?  @db.Text    // 外貌描述
+  
+  // 生成相关
+  referenceImage String? @db.Text @map("reference_image")  // 参考图 URL
+  generatedImages String[] @default([]) @map("generated_images")  // 生成的图片列表
+  confirmedImage String? @map("confirmed_image")  // 确认使用的图片
+  
+  // 状态
+  status      ResourceStatus @default(DRAFT)
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([projectId])
+  @@index([status])
+  @@map("Character")
+}
+
+// 场景表（Jurilu: 场景管理）
+model Scene {
+  id          String   @id @default(uuid())
+  
+  // 所属项目
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // 基本信息
+  name        String
+  description String?  @db.Text
+  
+  // 场景属性
+  location    String?              // 地点
+  timeOfDay   String?  @map("time_of_day")  // 时间（白天/黄昏/夜晚等）
+  weather     String?              // 天气
+  
+  // 生成相关
+  referenceImage String? @db.Text @map("reference_image")
+  generatedImages String[] @default([]) @map("generated_images")
+  confirmedImage String? @map("confirmed_image")
+  
+  // 状态
+  status      ResourceStatus @default(DRAFT)
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([projectId])
+  @@index([status])
+  @@map("Scene")
+}
+
+// 道具/物品表（Jurilu: 物品管理）
+model Item {
+  id          String   @id @default(uuid())
+  
+  // 所属项目
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // 基本信息
+  name        String
+  description String?  @db.Text
+  category    String?              // 分类（武器/道具/服装等）
+  
+  // 属性
+  properties  Json?    @default("{}")  // 自定义属性
+  
+  // 生成相关
+  referenceImage String? @db.Text @map("reference_image")
+  generatedImages String[] @default([]) @map("generated_images")
+  confirmedImage String? @map("confirmed_image")
+  
+  // 状态
+  status      ResourceStatus @default(DRAFT)
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([projectId])
+  @@index([status])
+  @@index([category])
+  @@map("Item")
+}
+
+// 资源状态枚举（角色/场景/物品共用）
+enum ResourceStatus {
+  DRAFT       // 草稿
+  GENERATING  // 生成中
+  PREVIEW     // 待确认
+  CONFIRMED   // 已确认
+}
+
+// ============ 🔥 生成任务 (EpisodeWorkbench 核心) ============
+
+model GenerationTask {
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // 关联资源
+  resourceType   GenerationResourceType @map("resource_type")
+  resourceId     String?    @map("resource_id")     // 关联的角色/场景/物品 ID
+  resourceName   String?    @map("resource_name")   // 冗余存储，方便查询
+  episodeId      String?    @map("episode_id")      // 关联的片段 ID
+  
+  // AI 模型和参数
+  aiModel        String     @map("ai_model")        // 使用的 AI 模型
+  prompt         String     @db.Text                // 生成提示词
+  referenceImage String?    @db.Text @map("reference_image") // 参考图片 URL
+  
+  // 生成参数 (JSON 存储灵活参数)
+  params         Json?      @default("{}")          // 分辨率/数量/风格等
+  
+  // 生成结果
+  status         GenerationTaskStatus @default(PENDING)
+  candidateImages String[]  @default([]) @map("candidate_images") // 候选结果
+  confirmedImage  String?   @map("confirmed_image")  // 确认的结果
+  errorMessage    String?   @db.Text @map("error_message")
+  
+  // 外部任务追踪
+  externalTaskId String?    @map("external_task_id") // 外部 API 任务 ID
+  
+  // 积分消耗
+  creditsUsed    Int        @default(0) @map("credits_used")
+  
+  // 创建者
+  createdById    String     @map("created_by_id")
+  createdBy      User       @relation(fields: [createdById], references: [id])
+  
+  // 时间戳
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  completedAt    DateTime?  @map("completed_at")
+  
+  @@index([projectId])
+  @@index([status])
+  @@index([resourceType])
+  @@index([createdById])
+  @@map("GenerationTask")
+}
+
+// 生成资源类型
+enum GenerationResourceType {
+  CHARACTER   // 角色图片
+  SCENE       // 场景图片
+  ITEM        // 物品图片
+  VIDEO       // 视频生成
+  FUSION      // 融合生图
+}
+
+// 生成任务状态
+enum GenerationTaskStatus {
+  PENDING     // 等待处理
+  QUEUED      // 已入队
+  PROCESSING  // 生成中
+  PREVIEW     // 待确认（有候选结果）
+  CONFIRMED   // 已确认
+  FAILED      // 失败
+  CANCELLED   // 已取消
+}
+
 // ============ 🔥 字段变化说明 ============
 //
 // ❌ 删除的字段（大额数据，由前端本地存储）：
@@ -325,4 +979,6 @@ model RequestLog {
 // - 优化后：每条记录 ~1 KB
 // - 节省：99% 存储空间
 //
+
+
 

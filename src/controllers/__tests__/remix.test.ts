@@ -19,12 +19,17 @@ jest.mock('../../services/taskPollingService', () => ({
   startTaskPolling: jest.fn(),
 }));
 
+// 🔥 remixSoraVideo 现在是数组 [multerMiddleware, handler]
+// 获取实际的处理函数（数组的最后一个元素）
+const remixHandler = remixSoraVideo[remixSoraVideo.length - 1] as (req: Request, res: Response) => Promise<void>;
+
 // Mock Request/Response
 const mockRequest = () => {
   const req: any = {
     params: { videoId: 'video_123' },
     body: { prompt: 'New Prompt', model: 'sora_v2' },
     user: { userId: 'user_123' },
+    file: undefined,  // 🔥 添加 file 属性
   };
   return req as Request;
 };
@@ -66,7 +71,7 @@ describe('remixSoraVideo Controller', () => {
       videoId: 'new_video_456',
     });
 
-    await remixSoraVideo(req, res);
+    await remixHandler(req, res);
 
     // Assertions
     expect(prisma.videoTask.findUnique).toHaveBeenCalledWith({ where: { videoId: 'video_123' } });
@@ -96,7 +101,7 @@ describe('remixSoraVideo Controller', () => {
 
     (prisma.videoTask.findUnique as jest.Mock).mockResolvedValue(null);
 
-    await remixSoraVideo(req, res);
+    await remixHandler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: '原视频任务不存在' }));
@@ -111,7 +116,7 @@ describe('remixSoraVideo Controller', () => {
       externalTaskId: null,
     });
 
-    await remixSoraVideo(req, res);
+    await remixHandler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
@@ -127,7 +132,7 @@ describe('remixSoraVideo Controller', () => {
       externalTaskId: 'ext_123',
     });
 
-    await remixSoraVideo(req, res);
+    await remixHandler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500); // 或捕获特定的错误处理逻辑
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'SORA_API_KEY 未配置' }));

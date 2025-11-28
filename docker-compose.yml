@@ -4,7 +4,8 @@ services:
     image: redis:7-alpine
     container_name: sora-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # 🔥 BUG-003 修复：添加密码认证，支持 Redis MCP
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass sora_redis_2024
     environment:
       - TZ=Asia/Shanghai
     volumes:
@@ -14,7 +15,7 @@ services:
     networks:
       - sora-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "sora_redis_2024", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -43,8 +44,8 @@ services:
 
   # ============ Sora UI Backend API ============
   backend:
-    # 🔥 使用 Docker Hub 镜像（已修复所有 Bug，包含 Remix 功能）
-    image: zuozuoliang999/sora-ui-backend:v1.2.1-remix
+    # 🔥 使用 1.7.1-remixpro 版本（Remix 支持 FormData + 图片）
+    image: zuozuoliang999/sora-ui-backend:1.7.1-remixpro
     # 如需使用最新版本，取消下面的注释：
     # image: zuozuoliang999/sora-ui-backend:latest
     container_name: sora-ui-backend
@@ -58,7 +59,7 @@ services:
       - DATABASE_URL=postgresql://sorauser:sora_password_2024@postgres:5432/soraui?schema=public&connection_limit=20&pool_timeout=10&connect_timeout=10
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_PASSWORD=sora_redis_2024
       - ENABLE_REDIS_CACHE=true
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - LICENSE_SECRET=${LICENSE_SECRET:-change-me-in-production}
@@ -67,9 +68,11 @@ services:
       - APIYI_API_KEY=${APIYI_API_KEY:-}
       - VIDEO_POLL_INTERVAL=${VIDEO_POLL_INTERVAL:-30000}
       - VIDEO_MAX_POLL_ATTEMPTS=${VIDEO_MAX_POLL_ATTEMPTS:-20}
+      - PUBLIC_BASE_URL=http://175.27.250.155  # 🔥 腾讯云公网 IP
     volumes:
       - ./updates:/app/updates:ro  # 更新文件只读
       - ./logs:/app/logs           # 日志持久化
+      - ./uploads:/app/uploads     # 🔥 参考图片存储（可读写）
     networks:
       - sora-network
     depends_on:
@@ -96,6 +99,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./updates:/var/www/updates:ro  # 更新文件服务
+      - ./uploads:/var/www/uploads:ro  # 🔥 参考图片静态服务
     depends_on:
       - backend
     networks:
@@ -110,4 +114,5 @@ volumes:
     driver: local
   postgres-data:
     driver: local
+
 

@@ -26,6 +26,7 @@ import { TaskStatus } from '@prisma/client';
 interface TaskDetails {
   videoId: string;
   externalTaskId: string;
+  clientRequestId?: string;  // 🔥 BUG-003 修复：前端任务 ID
   apiConfigId: string;
   userId: string;
   startedAt: number;
@@ -41,7 +42,19 @@ const pollingTimers = new Map<string, NodeJS.Timeout>();  // ✅ 保留（本地
 // 轮询配置
 const POLLING_INTERVAL = 5000; // 5秒
 const MAX_POLL_ATTEMPTS = 120; // 最多轮询 120 次（10分钟）
-const MAX_RETRY_ATTEMPTS = 1;  // 🔥 最多重试1次
+const MAX_RETRY_ATTEMPTS = 0;  // 🔥 禁用自动重试（与 1.5.5-fix-input-reference 对齐）
+
+// 🔥 不可重试的永久性错误（这些错误重试也不会成功）
+const NON_RETRYABLE_ERRORS = [
+  '文件上传失败',
+  'upload failed',
+  'invalid image',
+  'image format',
+  'file too large',
+  'unsupported format',
+  'invalid file',
+  'reference image',
+];
 
 /**
  * 状态映射：外部 API → 内部状态
@@ -63,10 +76,11 @@ function mapExternalStatus(externalStatus: string): TaskStatus {
 export async function startTaskPolling(params: {
   videoId: string;
   externalTaskId: string;
+  clientRequestId?: string;  // 🔥 BUG-003 修复：前端任务 ID
   apiConfigId: string;
   userId: string;
 }) {
-  const { videoId, externalTaskId, apiConfigId, userId } = params;
+  const { videoId, externalTaskId, clientRequestId, apiConfigId, userId } = params;
   
   // 🔥 LiteLLM: 分布式锁（Redis SETNX）
   const lockKey = `lock:polling:${videoId}`;
@@ -92,6 +106,7 @@ export async function startTaskPolling(params: {
   const taskDetails: TaskDetails = {
     videoId,
     externalTaskId,
+    clientRequestId,  // 🔥 BUG-003 修复：保存前端任务 ID
     apiConfigId,
     userId,
     startedAt: Date.now(),
@@ -180,10 +195,30 @@ async function pollTask(videoId: string) {
       console.error(`[TaskPolling] ❌ 任务失败: ${errorMessage}`);
       console.error(`[TaskPolling] 📦 错误详情:`, extData.error);
       
-      // 🔥 自动重试逻辑（参考 LiteLLM 的重试策略）
-      if (task.retryCount < MAX_RETRY_ATTEMPTS) {
+      // 🔥 检查是否是不可重试的永久性错误
+      const isNonRetryable = NON_RETRYABLE_ERRORS.some(
+        pattern => errorMessage.toLowerCase().includes(pattern.toLowerCase())
+      );
+      
+      if (isNonRetryable) {
+        console.error(`[TaskPolling] 🚫 永久性错误，不重试: ${errorMessage}`);
+        await finalizeFailure(task, errorMessage, errorType);
+        return;
+      }
+      
+      // 🔥 自动重试逻辑（只重试一次，且必须有图片）
+      if (MAX_RETRY_ATTEMPTS > 0 && task.retryCount < MAX_RETRY_ATTEMPTS) {
+        // 🔥 先检查任务是否有参考图片
+        const dbTask = await videoTaskRepository.getTask(videoId);
+        if (!dbTask?.referenceImage) {
+          console.log(`[TaskPolling] ⚠️ 任务没有参考图片，跳过自动重试: ${videoId}`);
+          await finalizeFailure(task, errorMessage + ' (无参考图片，不支持自动重试)', errorType);
+          return;
+        }
+        
         task.retryCount++;
-        console.log(`[TaskPolling] 🔄 自动重试 (${task.retryCount}/${MAX_RETRY_ATTEMPTS})...`);
+        console.log(`[TaskPolling] 🔄 自动重试 (${task.retryCount}/${MAX_RETRY_ATTEMPTS})，带上原始图片...`);
+        console.log(`[TaskPolling] 🖼️ 参考图片: ${dbTask.referenceImage}`);
         console.log(`[TaskPolling] ⏱️ 等待10秒后重新提交任务...`);
         
         // 通知前端正在重试
@@ -192,7 +227,7 @@ async function pollTask(videoId: string) {
           externalTaskId: task.externalTaskId,
           status: 'QUEUED',  // 标记为排队中
           progress: 0,
-          error: { message: `任务失败，自动重试中 (${task.retryCount}/${MAX_RETRY_ATTEMPTS})` },
+          error: { message: `任务失败，自动重试中 (${task.retryCount}/${MAX_RETRY_ATTEMPTS})，带上原始图片` },
         });
         
         // 等待10秒后重新提交
@@ -209,8 +244,8 @@ async function pollTask(videoId: string) {
         return;
       }
       
-      // 🔥 达到最大重试次数，标记为最终失败
-      console.error(`[TaskPolling] 🔴 达到最大重试次数，任务失败: ${videoId}`);
+      // 🔥 直接失败，立即通知前端
+      console.error(`[TaskPolling] 🔴 任务失败: ${videoId}`);
       await finalizeFailure(task, errorMessage, errorType);
       return;
     }
@@ -222,6 +257,7 @@ async function pollTask(videoId: string) {
     const pushed = sseService.pushTaskUpdate(task.userId, {
       videoId,
       externalTaskId: task.externalTaskId,
+      clientRequestId: task.clientRequestId,  // 🔥 BUG-003 修复：包含前端任务 ID
       status: internalStatus,
       progress: extData.progress || 0,
       videoUrl: extData.video_url,

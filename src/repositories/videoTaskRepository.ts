@@ -241,6 +241,42 @@ class VideoTaskRepository {
   }
 
   /**
+   * 🔥 BUG-003 修复：通过 clientRequestId 批量查询任务
+   * 用于前端重启后恢复任务状态
+   */
+  async findByClientRequestIds(clientRequestIds: string[], userId: string): Promise<VideoTask[]> {
+    try {
+      if (!clientRequestIds || clientRequestIds.length === 0) {
+        return [];
+      }
+      
+      console.log(`[VideoTaskRepo] 🔍 查询 clientRequestId:`, clientRequestIds.length, '个');
+      
+      const tasks = await prisma.videoTask.findMany({
+        where: {
+          clientRequestId: { in: clientRequestIds },
+          userId,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true,
+            },
+          },
+        },
+      });
+      
+      console.log(`[VideoTaskRepo] ✅ 找到 ${tasks.length} 个匹配任务`);
+      return tasks;
+    } catch (error) {
+      console.error('[VideoTaskRepo] ❌ 通过 clientRequestId 查询失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 清理过期任务（可选）
    */
   async cleanupOldTasks(daysToKeep: number = 30): Promise<number> {

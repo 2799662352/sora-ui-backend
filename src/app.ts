@@ -16,10 +16,14 @@ import channelRoutes from './routes/channel';  // 🔥 Channel 管理
 import relayRoutes from './routes/relay';      // 🔥 Relay 转发
 import statsRoutes from './routes/stats';      // 🔥 统计 API
 import soraRelayRoutes from './routes/soraRelay';  // 🔥 Sora Relay（完全转发）
+import collaborationRoutes from './routes/collaboration';  // 🎬 协作系统
 import { rateLimiter } from './middleware/rateLimiter'; // 🔥 限流中间件
 import { testConnection } from './loaders/prisma';
 import { redisService } from './services/redisService';
 import { recoverPollingTasks } from './services/taskPollingService';  // 🔥 新增
+import { imageCleanerService } from './services/imageCleaner';  // 🔥 图片自动清理
+import { wsService } from './services/websocket.service';  // 🔥 WebSocket 服务
+import { collaborationGenerationService } from './services/collaborationGenerationService';  // 🎬 协作生成服务
 import { APIResponse } from './types';
 // 加载环境变量
 dotenv.config();
@@ -32,6 +36,8 @@ const PORT = process.env.PORT || 3001;
 // 🔥 LiteLLM: 全局限流中间件 (在路由之前注册)
 // 对 /api/relay 开头的路由应用更严格的限流
 app.use('/api/relay', rateLimiter('GLOBAL_API'));
+// 🆕 协作 API 使用更宽松的限流（支持频繁的界面刷新）
+app.use('/api/collab', rateLimiter('COLLAB'));
 // 对其他 API 应用普通限流
 app.use('/api', rateLimiter('GLOBAL_WEB'));
 
@@ -66,6 +72,7 @@ app.use('/api/stats', statsRoutes);       // 🔥 统计 API（LiteLLM）
 // 🔥 重要：更具体的路由必须在前面！
 app.use('/api/relay/sora', soraRelayRoutes);  // 🔥 Sora Relay（完全符合LiteLLM）- 必须在 /api/relay 之前！
 app.use('/api/relay', relayRoutes);       // 🔥 Relay 转发（One Hub）- 通用路由放后面
+app.use('/api/collab', collaborationRoutes);  // 🎬 协作系统 API
 
 // ============ 健康检查 ============
 
@@ -152,18 +159,36 @@ async function startServer() {
       throw new Error('数据库连接失败');
     }
 
+    // 🔥 启动图片自动清理服务（30分钟清理一次）
+    imageCleanerService.start();
+
+    // 🎬 启动协作系统生成任务后台处理
+    if (process.env.ENABLE_COLLAB_GENERATION !== 'false') {
+      collaborationGenerationService.startBackgroundProcessing();
+      console.log('✅ 协作生成任务后台处理已启动');
+    }
+
     // 启动 HTTP 服务器
-    app.listen(PORT, () => {
+    const server = http.createServer(app);
+    
+    // 🔥 集成 WebSocket 服务（n8n 架构）
+    wsService.setupWebSocketServer(server, app);
+
+    server.listen(PORT, () => {
       console.log('');
       console.log('🚀 Sora UI Backend API 已启动');
-      console.log(`📡 服务地址: http://localhost:${PORT}`);
+      console.log(`📡 HTTP 服务: http://localhost:${PORT}`);
+      console.log(`🔌 WebSocket: ws://localhost:${PORT}/api/collab/ws`);
       console.log(`🌍 环境: ${process.env.NODE_ENV}`);
       console.log(`🗄️  数据库: PostgreSQL (Prisma ORM)`);
       console.log(`🔥 缓存: Redis (${redisService.getStats().connected ? '已连接' : '未连接'})`);
+      console.log(`🗑️ 图片清理: 30分钟自动清理`);
       console.log('');
       console.log('📚 API 文档:');
       console.log(`   - 认证: http://localhost:${PORT}/api/auth`);
       console.log(`   - SSE: http://localhost:${PORT}/api/sse`);
+      console.log(`   - WebSocket: ws://localhost:${PORT}/api/collab/ws`);
+      console.log(`   - 协作系统: http://localhost:${PORT}/api/collab`);
       console.log(`   - 健康检查: http://localhost:${PORT}/health`);
       console.log('');
     });
@@ -175,4 +200,19 @@ async function startServer() {
 
 startServer();
 
-export default app;
+// 🔥 优雅退出（停止所有服务）
+process.on('SIGTERM', () => {
+  console.log('[App] 📴 收到 SIGTERM 信号，准备退出...');
+  wsService.closeAllConnections();
+  imageCleanerService.stop();
+  collaborationGenerationService.stopBackgroundProcessing();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('[App] 📴 收到 SIGINT 信号，准备退出...');
+  wsService.closeAllConnections();
+  imageCleanerService.stop();
+  collaborationGenerationService.stopBackgroundProcessing();
+  process.exit(0);
+});

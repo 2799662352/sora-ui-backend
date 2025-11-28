@@ -312,6 +312,43 @@ class RedisService {
   }
   
   /**
+   * 🔥 Pub/Sub: 发布消息
+   */
+  async publish(channel: string, message: string): Promise<number> {
+    try {
+      const fullChannel = this.addNamespace(channel);
+      const subscribers = await this.client.publish(fullChannel, message);
+      console.log(`[Redis] 📢 Published to ${fullChannel}: ${subscribers} subscribers`);
+      return subscribers;
+    } catch (error) {
+      console.error(`[Redis] ❌ Publish failed:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * 🔥 Pub/Sub: 订阅频道
+   * 注意：订阅需要单独的连接
+   */
+  async subscribe(channel: string, callback: (message: string) => void): Promise<void> {
+    try {
+      const fullChannel = this.addNamespace(channel);
+      
+      // 创建订阅专用客户端
+      const subscriber = this.client.duplicate();
+      await subscriber.connect();
+      
+      await subscriber.subscribe(fullChannel, (message) => {
+        callback(message);
+      });
+      
+      console.log(`[Redis] 📡 Subscribed to ${fullChannel}`);
+    } catch (error) {
+      console.error(`[Redis] ❌ Subscribe failed:`, error);
+    }
+  }
+
+  /**
    * 关闭连接
    */
   async disconnect() {

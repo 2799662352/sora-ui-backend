@@ -147,6 +147,7 @@ class SSEService {
   pushTaskUpdate(userId: string, payload: {
     videoId: string;
     externalTaskId?: string;
+    clientRequestId?: string;  // 🔥 BUG-003 修复：前端任务 ID
     status: string;
     progress: number;
     videoUrl?: string;
@@ -272,3 +273,4 @@ class SSEService {
 
 // 导出单例
 export const sseService = new SSEService();
+
